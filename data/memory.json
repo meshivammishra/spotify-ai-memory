@@ -1,0 +1,49 @@
+{
+    "user_001": {
+        "user_id": "user_001",
+        "total_interactions": 6,
+        "generated_at": "2026-08-20T16:34:35.817829",
+        "memories": [
+            {
+                "memory_id": "user_001_artist_001",
+                "type": "preference",
+                "fact": "User frequently listens to Arijit Singh",
+                "value": "Arijit Singh",
+                "confidence": 0.5,
+                "source": "listening_history",
+                "created_at": "2026-08-20T16:34:35.817813",
+                "status": "active"
+            },
+            {
+                "memory_id": "user_001_genre_001",
+                "type": "preference",
+                "fact": "User frequently listens to Bollywood music",
+                "value": "Bollywood",
+                "confidence": 0.5,
+                "source": "listening_history",
+                "created_at": "2026-08-20T16:34:35.817820",
+                "status": "active"
+            },
+            {
+                "memory_id": "user_001_context_001",
+                "type": "preference",
+                "fact": "User often listens during morning",
+                "value": "morning",
+                "confidence": 0.33,
+                "source": "listening_history",
+                "created_at": "2026-08-20T16:34:35.817822",
+                "status": "active"
+            },
+            {
+                "memory_id": "user_001_track_001",
+                "type": "episodic",
+                "fact": "User frequently played Tum Hi Ho",
+                "value": "Tum Hi Ho",
+                "confidence": 0.17,
+                "source": "listening_history",
+                "created_at": "2026-08-20T16:34:35.817828",
+                "status": "active"
+            }
+        ]
+    }
+}

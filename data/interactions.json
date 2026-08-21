@@ -1,0 +1,56 @@
+[
+  {
+    "user_id": "user_001",
+    "timestamp": "2026-08-01T09:15:00",
+    "type": "play",
+    "artist": "Arijit Singh",
+    "track": "Tum Hi Ho",
+    "genre": "Bollywood",
+    "context": "morning"
+  },
+  {
+    "user_id": "user_001",
+    "timestamp": "2026-08-02T20:30:00",
+    "type": "play",
+    "artist": "Arijit Singh",
+    "track": "Channa Mereya",
+    "genre": "Bollywood",
+    "context": "evening"
+  },
+  {
+    "user_id": "user_001",
+    "timestamp": "2026-08-03T18:45:00",
+    "type": "play",
+    "artist": "The Weeknd",
+    "track": "Blinding Lights",
+    "genre": "Pop",
+    "context": "evening"
+  },
+  {
+    "user_id": "user_001",
+    "timestamp": "2026-08-04T22:10:00",
+    "type": "play",
+    "artist": "The Weeknd",
+    "track": "Save Your Tears",
+    "genre": "Pop",
+    "context": "night"
+  },
+  {
+    "user_id": "user_001",
+    "timestamp": "2026-08-05T08:30:00",
+    "type": "play",
+    "artist": "A.R. Rahman",
+    "track": "Kun Faya Kun",
+    "genre": "Sufi",
+    "context": "morning"
+  },
+  {
+    "user_id": "user_001",
+    "timestamp": "2026-08-06T21:00:00",
+    "type": "play",
+    "artist": "Arijit Singh",
+    "track": "Agar Tum Saath Ho",
+    "genre": "Bollywood",
+    "context": "night"
+  }
+]
