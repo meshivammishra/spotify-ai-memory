@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react'
 import './App.css'
 
 import {
+  loginUser,
+  registerUser,
+  logout,
+  getCurrentUser,
   saveMemory,
   searchMemory,
   askMemory,
@@ -10,80 +14,276 @@ import {
   deleteMemory
 } from './api'
 
+
 function App() {
 
-  // ==============================
+  // ==========================================
+  // AUTH
+  // ==========================================
+
+  const [currentUser, setCurrentUser] = useState(
+    getCurrentUser()
+  )
+
+  const [isRegister, setIsRegister] = useState(false)
+
+  const [authName, setAuthName] = useState('')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+
+  const [authLoading, setAuthLoading] = useState(false)
+  const [authError, setAuthError] = useState('')
+
+
+  // ==========================================
+  // USER ID
+  // ==========================================
+
+  const userId = currentUser?.user_id || ''
+
+
+  // ==========================================
   // STATES
-  // ==============================
+  // ==========================================
 
   const [memory, setMemory] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [question, setQuestion] = useState('')
+
   const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState('')
+
+  const [loadingAction, setLoadingAction] = useState('')
 
   const [searchResults, setSearchResults] = useState([])
   const [memories, setMemories] = useState([])
 
-  // Edit states
+  const [aiAnswer, setAiAnswer] = useState('')
+
   const [editingMemory, setEditingMemory] = useState(null)
   const [editText, setEditText] = useState('')
 
-  const userId = 'user_001'
+
+  // ==========================================
+  // MESSAGE HELPER
+  // ==========================================
+
+  function showMessage(text, type = 'success') {
+
+    setMessage(text)
+    setMessageType(type)
+
+  }
 
 
-  // ==============================
-  // LOAD MEMORIES
-  // ==============================
+  // ==========================================
+  // LOGIN
+  // ==========================================
 
-  async function loadMemories() {
+  async function handleLogin(e) {
+
+    e.preventDefault()
+
+    if (!authEmail.trim() || !authPassword) {
+
+      setAuthError(
+        'Please enter email and password.'
+      )
+
+      return
+    }
 
     try {
 
-      console.log('Loading memories...')
+      setAuthLoading(true)
+      setAuthError('')
 
-      const data = await getMemories()
+      const data = await loginUser(
+        authEmail.trim(),
+        authPassword
+      )
 
-      console.log('MEMORIES FROM BACKEND:', data)
+      setCurrentUser(data.user)
 
-      setMemories(data.memories || [])
+      setAuthEmail('')
+      setAuthPassword('')
 
     } catch (error) {
+
+      console.error(
+        'LOGIN ERROR:',
+        error
+      )
+
+      setAuthError(
+        error.message
+      )
+
+    } finally {
+
+      setAuthLoading(false)
+
+    }
+
+  }
+
+
+  // ==========================================
+  // REGISTER
+  // ==========================================
+
+  async function handleRegister(e) {
+
+    e.preventDefault()
+
+    if (
+      !authName.trim() ||
+      !authEmail.trim() ||
+      !authPassword
+    ) {
+
+      setAuthError(
+        'Please fill all fields.'
+      )
+
+      return
+    }
+
+    try {
+
+      setAuthLoading(true)
+      setAuthError('')
+
+      await registerUser(
+        authName.trim(),
+        authEmail.trim(),
+        authPassword
+      )
+
+      // Registration successful
+      // Switch to login
+
+      setIsRegister(false)
+
+      setAuthName('')
+      setAuthPassword('')
+
+      setAuthError('')
+
+      showMessage(
+        'Registration successful. Please login.',
+        'success'
+      )
+
+    } catch (error) {
+
+      console.error(
+        'REGISTER ERROR:',
+        error
+      )
+
+      setAuthError(
+        error.message
+      )
+
+    } finally {
+
+      setAuthLoading(false)
+
+    }
+
+  }
+
+
+  // ==========================================
+  // LOGOUT
+  // ==========================================
+
+  function handleLogout() {
+
+    logout()
+
+    setCurrentUser(null)
+
+    setMemories([])
+    setSearchResults([])
+    setAiAnswer('')
+
+    setMemory('')
+    setSearchQuery('')
+    setQuestion('')
+
+    setEditingMemory(null)
+    setEditText('')
+
+    setMessage('')
+    setMessageType('')
+
+  }
+
+
+  // ==========================================
+  // LOAD MEMORIES
+  // ==========================================
+
+  async function loadMemories() {
+
+    if (!userId) {
+      return
+    }
+
+    try {
+
+      setLoadingAction('load')
+
+      const data =
+        await getMemories(userId)
+
+      setMemories(
+        data.memories || []
+      )
+
+      setLoadingAction('')
+
+    } catch (error) {
+
+      setLoadingAction('')
 
       console.error(
         'Failed to load memories:',
         error
       )
 
-      setMessage(
-        `Error: ${error.message}`
+      showMessage(
+        `Failed to load memories: ${error.message}`,
+        'error'
       )
+
     }
+
   }
 
 
-  // Load memories when page opens
+  // ==========================================
+  // LOAD WHEN USER LOGS IN
+  // ==========================================
+
   useEffect(() => {
 
-    loadMemories()
+    if (currentUser?.user_id) {
 
-  }, [])
+      loadMemories()
+
+    }
+
+  }, [currentUser?.user_id])
 
 
-  // ==============================
+  // ==========================================
   // START EDIT
-  // ==============================
+  // ==========================================
 
   function startEdit(memoryItem) {
-
-    console.log(
-      'EDIT CLICKED:',
-      memoryItem
-    )
-
-    console.log(
-      'MEMORY ID:',
-      memoryItem.memory_id
-    )
 
     setEditingMemory(
       memoryItem.memory_id
@@ -94,466 +294,627 @@ function App() {
       memoryItem.value ||
       ''
     )
+
+    setMessage('')
+
   }
 
 
-  // ==============================
+  // ==========================================
   // CANCEL EDIT
-  // ==============================
+  // ==========================================
 
   function cancelEdit() {
 
     setEditingMemory(null)
-
     setEditText('')
 
-    setMessage('')
   }
 
 
-  // ==============================
+  // ==========================================
   // UPDATE MEMORY
-  // ==============================
+  // ==========================================
 
   async function handleUpdateMemory(memoryId) {
 
-    console.log(
-      'UPDATE FUNCTION CALLED'
-    )
-
-    console.log(
-      'MEMORY ID:',
-      memoryId
-    )
-
-    console.log(
-      'EDIT TEXT:',
-      editText
-    )
-
-
-    // Check memory ID
     if (!memoryId) {
 
-      setMessage(
-        'Error: Memory ID is missing.'
-      )
-
-      console.error(
-        'Memory ID is undefined!'
+      showMessage(
+        'Memory ID is missing.',
+        'error'
       )
 
       return
+
     }
 
-
-    // Check text
     if (!editText.trim()) {
 
-      setMessage(
-        'Memory cannot be empty.'
+      showMessage(
+        'Memory cannot be empty.',
+        'error'
       )
 
       return
-    }
 
+    }
 
     try {
 
-      setMessage(
-        'Updating memory...'
+      setLoadingAction('update')
+
+      showMessage(
+        'Updating memory...',
+        'loading'
       )
 
-
-      // ==============================
-      // SEND UPDATE TO BACKEND
-      // ==============================
-
-      // IMPORTANT:
-      // Backend MemoryUpdateRequest requires
-      // BOTH "fact" and "value"
-
-      const updateData = {
-
-        fact: editText.trim(),
-
-        value: editText.trim()
-
-      }
-
-
-      console.log(
-        'SENDING UPDATE:',
-        updateData
-      )
-
-      console.log(
-        'PUT MEMORY ID:',
-        memoryId
-      )
-
-
-      const data = await updateMemory(
-        memoryId,
-        updateData
-      )
-
-
-      console.log(
-        'UPDATE RESPONSE:',
-        data
-      )
-
-
-      // ==============================
-      // CLOSE EDIT BOX
-      // ==============================
+      const data =
+        await updateMemory(
+          userId,
+          memoryId,
+          {
+            fact: editText.trim(),
+            value: editText.trim()
+          }
+        )
 
       setEditingMemory(null)
-
       setEditText('')
-
-
-      // ==============================
-      // RELOAD FROM BACKEND
-      // ==============================
 
       await loadMemories()
 
+      setLoadingAction('')
 
-      setMessage(
+      showMessage(
         data.message ||
-        'Memory updated successfully!'
+        'Memory updated successfully!',
+        'success'
       )
 
-
     } catch (error) {
+
+      setLoadingAction('')
 
       console.error(
         'UPDATE ERROR:',
         error
       )
 
-      setMessage(
-        `Error: ${error.message}`
+      showMessage(
+        `Update failed: ${error.message}`,
+        'error'
       )
+
     }
+
   }
 
 
-  // ==============================
+  // ==========================================
   // DELETE MEMORY
-  // ==============================
+  // ==========================================
 
   async function handleDeleteMemory(memoryId) {
 
-    console.log(
-      'DELETE MEMORY:',
-      memoryId
-    )
-
-
     if (!memoryId) {
 
-      setMessage(
-        'Error: Memory ID is missing.'
+      showMessage(
+        'Memory ID is missing.',
+        'error'
       )
 
       return
-    }
 
+    }
 
     const confirmDelete =
       window.confirm(
         'Are you sure you want to delete this memory?'
       )
 
-
     if (!confirmDelete) {
-
       return
     }
 
-
     try {
 
-      setMessage(
-        'Deleting memory...'
+      setLoadingAction('delete')
+
+      showMessage(
+        'Deleting memory...',
+        'loading'
       )
 
-
       await deleteMemory(
+        userId,
         memoryId
       )
 
-
-      // Remove from UI
-      setMemories(
-        (prev) =>
-          prev.filter(
-            (item) =>
-              item.memory_id !== memoryId
-          )
+      setMemories(prev =>
+        prev.filter(
+          item =>
+            item.memory_id !== memoryId
+        )
       )
 
-
-      // If currently editing this memory
-      if (
-        editingMemory === memoryId
-      ) {
+      if (editingMemory === memoryId) {
 
         setEditingMemory(null)
-
         setEditText('')
+
       }
 
+      setLoadingAction('')
 
-      setMessage(
-        'Memory deleted successfully!'
+      showMessage(
+        'Memory deleted successfully!',
+        'success'
       )
 
-
     } catch (error) {
+
+      setLoadingAction('')
 
       console.error(
         'DELETE ERROR:',
         error
       )
 
-      setMessage(
-        `Error: ${error.message}`
+      showMessage(
+        `Delete failed: ${error.message}`,
+        'error'
       )
+
     }
+
   }
 
 
-  // ==============================
-  // SAVE NEW MEMORY
-  // ==============================
+  // ==========================================
+  // SAVE MEMORY
+  // ==========================================
 
   async function handleSaveMemory() {
 
     if (!memory.trim()) {
 
-      setMessage(
-        'Please enter a memory.'
+      showMessage(
+        'Please enter a memory first.',
+        'error'
       )
 
       return
-    }
 
+    }
 
     try {
 
-      setMessage(
-        'Saving memory...'
+      setLoadingAction('save')
+
+      showMessage(
+        'Saving memory...',
+        'loading'
       )
-
-
-      console.log(
-        'SAVING MEMORY:',
-        memory.trim()
-      )
-
 
       const data =
         await saveMemory(
+          userId,
           memory.trim()
         )
 
-
-      console.log(
-        'SAVE RESPONSE:',
-        data
-      )
-
-
       setMemory('')
 
-
-      setMessage(
-        data.message ||
-        'Memory saved successfully!'
-      )
-
-
-      // Reload memories
       await loadMemories()
 
+      setLoadingAction('')
+
+      showMessage(
+        data.message ||
+        'Memory saved successfully!',
+        'success'
+      )
 
     } catch (error) {
+
+      setLoadingAction('')
 
       console.error(
         'SAVE ERROR:',
         error
       )
 
-      setMessage(
-        `Error: ${error.message}`
+      showMessage(
+        `Save failed: ${error.message}`,
+        'error'
       )
+
     }
+
   }
 
 
-  // ==============================
+  // ==========================================
   // SEARCH MEMORY
-  // ==============================
+  // ==========================================
 
   async function handleSearchMemory() {
 
     if (!searchQuery.trim()) {
 
-      setMessage(
-        'Please enter a search query.'
+      showMessage(
+        'Please enter something to search.',
+        'error'
       )
 
       return
-    }
 
+    }
 
     try {
 
-      setMessage(
-        'Searching memories...'
+      setLoadingAction('search')
+
+      showMessage(
+        'Searching memories...',
+        'loading'
       )
-
-
-      console.log(
-        'SEARCH QUERY:',
-        searchQuery.trim()
-      )
-
 
       const data =
         await searchMemory(
+          userId,
           searchQuery.trim()
         )
-
-
-      console.log(
-        'SEARCH RESPONSE:',
-        data
-      )
-
 
       setSearchResults(
         data.relevant_memories || []
       )
 
+      setLoadingAction('')
 
-      setMessage(
-        data.count
-          ? `${data.count} relevant memories found.`
-          : 'No relevant memories found.'
-      )
+      if (data.count) {
 
+        showMessage(
+          `${data.count} relevant memories found.`,
+          'success'
+        )
+
+      } else {
+
+        showMessage(
+          'No relevant memories found.',
+          'success'
+        )
+
+      }
 
     } catch (error) {
+
+      setLoadingAction('')
 
       console.error(
         'SEARCH ERROR:',
         error
       )
 
-      setMessage(
-        `Error: ${error.message}`
+      showMessage(
+        `Search failed: ${error.message}`,
+        'error'
       )
+
     }
+
   }
 
 
-  // ==============================
+  // ==========================================
   // ASK MEMORY
-  // ==============================
+  // ==========================================
 
   async function handleAskMemory() {
 
     if (!question.trim()) {
 
-      setMessage(
-        'Please enter a question.'
+      showMessage(
+        'Please enter a question first.',
+        'error'
       )
 
       return
-    }
 
+    }
 
     try {
 
-      setMessage(
-        'Thinking...'
+      setLoadingAction('ask')
+
+      setAiAnswer('')
+
+      showMessage(
+        'AI is thinking...',
+        'loading'
       )
-
-
-      console.log(
-        'QUESTION:',
-        question.trim()
-      )
-
 
       const data =
         await askMemory(
+          userId,
           question.trim()
         )
 
-
-      console.log(
-        'ASK RESPONSE:',
-        data
-      )
-
-
-      setMessage(
+      setAiAnswer(
         data.answer ||
         data.response ||
-        data.message ||
-        JSON.stringify(data)
+        'I could not find enough information in memory.'
       )
 
+      setLoadingAction('')
+
+      showMessage(
+        'Answer generated from stored memory.',
+        'success'
+      )
 
     } catch (error) {
+
+      setLoadingAction('')
 
       console.error(
         'ASK ERROR:',
         error
       )
 
-      setMessage(
-        `Error: ${error.message}`
+      setAiAnswer('')
+
+      showMessage(
+        `Ask Memory failed: ${error.message}`,
+        'error'
       )
+
     }
+
   }
 
 
-  // ==============================
-  // UI
-  // ==============================
+  // ==========================================
+  // RELEVANCE SCORE
+  // ==========================================
+
+  function getScorePercent(score) {
+
+    if (typeof score !== 'number') {
+      return null
+    }
+
+    const percentage =
+      Math.max(
+        0,
+        Math.min(
+          100,
+          score * 100
+        )
+      )
+
+    return percentage.toFixed(1)
+
+  }
+
+
+  // ============================================================
+  // LOGIN / REGISTER SCREEN
+  // ============================================================
+
+  if (!currentUser) {
+
+    return (
+
+      <div className="app">
+
+        <main className="container">
+
+          <section className="card auth-card">
+
+            <div className="section-header">
+
+              <div>
+
+                <div className="section-title">
+
+                  <span className="section-icon">
+                    🧠
+                  </span>
+
+                  <h2>
+                    Spotify AI Memory
+                  </h2>
+
+                </div>
+
+                <p>
+                  Personalized memory intelligence
+                </p>
+
+              </div>
+
+            </div>
+
+
+            <form
+              onSubmit={
+                isRegister
+                  ? handleRegister
+                  : handleLogin
+              }
+            >
+
+              {isRegister && (
+
+                <input
+                  type="text"
+                  placeholder="Your name"
+                  value={authName}
+                  onChange={(e) =>
+                    setAuthName(e.target.value)
+                  }
+                />
+
+              )}
+
+
+              <input
+                type="email"
+                placeholder="Email"
+                value={authEmail}
+                onChange={(e) =>
+                  setAuthEmail(e.target.value)
+                }
+              />
+
+
+              <input
+                type="password"
+                placeholder="Password"
+                value={authPassword}
+                onChange={(e) =>
+                  setAuthPassword(e.target.value)
+                }
+              />
+
+
+              {authError && (
+
+                <div className="message message-error">
+
+                  <span className="message-icon">
+                    !
+                  </span>
+
+                  <span>
+                    {authError}
+                  </span>
+
+                </div>
+
+              )}
+
+
+              <button
+                type="submit"
+                disabled={authLoading}
+              >
+
+                {authLoading
+
+                  ? 'Please wait...'
+
+                  : isRegister
+                    ? 'Create Account'
+                    : 'Login'}
+
+              </button>
+
+            </form>
+
+
+            <div style={{
+              marginTop: '20px',
+              textAlign: 'center'
+            }}>
+
+              <button
+                type="button"
+                onClick={() => {
+
+                  setIsRegister(
+                    !isRegister
+                  )
+
+                  setAuthError('')
+
+                }}
+              >
+
+                {isRegister
+                  ? 'Already have an account? Login'
+                  : "Don't have an account? Register"}
+
+              </button>
+
+            </div>
+
+          </section>
+
+        </main>
+
+      </div>
+
+    )
+
+  }
+
+
+  // ============================================================
+  // MAIN APPLICATION
+  // ============================================================
 
   return (
 
     <div className="app">
 
 
-      {/* ================= HEADER ================= */}
+      {/* =====================================
+          HEADER
+      ===================================== */}
 
       <header className="header">
 
-        <div>
+        <div className="brand">
 
-          <h1>
-            🧠 Spotify AI Memory
-          </h1>
+          <div className="brand-icon">
+            🧠
+          </div>
 
-          <p>
-            Personalized memory system
-          </p>
+          <div>
+
+            <h1>
+              Spotify AI Memory
+            </h1>
+
+            <p>
+              Personalized memory intelligence
+            </p>
+
+          </div>
 
         </div>
 
 
+        {/* LOGGED-IN USER */}
+
         <div className="user">
 
-          👤 {userId}
+          <span className="online-dot"></span>
+
+          <div>
+
+            <strong>
+              {currentUser.name}
+            </strong>
+
+            <small style={{
+              display: 'block'
+            }}>
+              {currentUser.email}
+            </small>
+
+          </div>
+
+
+          <button
+            type="button"
+            onClick={handleLogout}
+          >
+            Logout
+          </button>
 
         </div>
 
@@ -563,390 +924,721 @@ function App() {
       <main className="container">
 
 
-        {/* ================= SAVED MEMORIES ================= */}
+        {/* =====================================
+            HERO
+        ===================================== */}
+
+        <section className="hero">
+
+          <div>
+
+            <span className="hero-label">
+              PERSONALIZED AI
+            </span>
+
+            <h2>
+              Your AI remembers
+              <span> what matters.</span>
+            </h2>
+
+            <p>
+              Store, search and ask questions
+              about your personalized Spotify memories.
+            </p>
+
+          </div>
+
+
+          <div className="hero-stats">
+
+            <div className="stat">
+
+              <strong>
+                {memories.length}
+              </strong>
+
+              <span>
+                Memories
+              </span>
+
+            </div>
+
+
+            <div className="stat">
+
+              <strong>
+                AI
+              </strong>
+
+              <span>
+                Powered
+              </span>
+
+            </div>
+
+          </div>
+
+        </section>
+
+
+        {/* =====================================
+            STATUS MESSAGE
+        ===================================== */}
+
+        {message && (
+
+          <div
+            className={`message message-${messageType}`}
+          >
+
+            {messageType === 'loading' && (
+              <span className="spinner"></span>
+            )}
+
+            {messageType === 'success' && (
+              <span className="message-icon">
+                ✓
+              </span>
+            )}
+
+            {messageType === 'error' && (
+              <span className="message-icon">
+                !
+              </span>
+            )}
+
+            <span>
+              {message}
+            </span>
+
+          </div>
+
+        )}
+
+
+        {/* =====================================
+            SAVED MEMORIES
+        ===================================== */}
 
         <section className="card">
 
-          <h2>
-            🧠 Saved Memories
-          </h2>
+          <div className="section-header">
+
+            <div>
+
+              <div className="section-title">
+
+                <span className="section-icon">
+                  🧠
+                </span>
+
+                <h2>
+                  Saved Memories
+                </h2>
+
+              </div>
+
+              <p>
+                Everything your AI currently remembers.
+              </p>
+
+            </div>
 
 
-          <p>
-            What the AI remembers about the user.
-          </p>
+            <span className="count-badge">
+              {memories.length}
+            </span>
+
+          </div>
 
 
           {memories.length === 0 ? (
 
-            <p>
-              No memories found.
-            </p>
+            <div className="empty-state">
+
+              <div className="empty-icon">
+                🧠
+              </div>
+
+              <h3>
+                No memories yet
+              </h3>
+
+              <p>
+                Add your first memory below
+                and your AI will remember it.
+              </p>
+
+            </div>
 
           ) : (
 
-            memories.map(
-              (memoryItem) => (
+            <div className="memory-list">
 
-                <div
-                  className="memory-item"
-                  key={memoryItem.memory_id}
-                >
+              {memories.map(
+                (memoryItem) => (
 
+                  <div
+                    className="memory-item"
+                    key={memoryItem.memory_id}
+                  >
 
-                  {/* MEMORY TEXT */}
+                    <div className="memory-top">
 
-                  <h3>
+                      <div className="memory-main">
 
-                    {memoryItem.fact ||
-                     memoryItem.value}
+                        <span className="memory-type">
+                          {memoryItem.type || 'memory'}
+                        </span>
 
-                  </h3>
-
-
-                  {/* TYPE */}
-
-                  <p>
-
-                    <strong>
-                      Type:
-                    </strong>{' '}
-
-                    {memoryItem.type}
-
-                  </p>
-
-
-                  {/* CONFIDENCE */}
-
-                  <p>
-
-                    <strong>
-                      Confidence:
-                    </strong>{' '}
-
-                    {memoryItem.confidence}
-
-                  </p>
-
-
-                  {/* SOURCE */}
-
-                  <p>
-
-                    <strong>
-                      Source:
-                    </strong>{' '}
-
-                    {memoryItem.source}
-
-                  </p>
-
-
-                  {/* ================= BUTTONS ================= */}
-
-                  <div className="memory-actions">
-
-
-                    {/* EDIT BUTTON */}
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        startEdit(
-                          memoryItem
-                        )
-                      }
-                    >
-
-                      ✏️ Edit
-
-                    </button>
-
-
-                    {/* DELETE BUTTON */}
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleDeleteMemory(
-                          memoryItem.memory_id
-                        )
-                      }
-                    >
-
-                      🗑️ Delete
-
-                    </button>
-
-
-                  </div>
-
-
-                  {/* ================= EDIT BOX ================= */}
-
-                  {editingMemory ===
-                    memoryItem.memory_id && (
-
-                    <div className="edit-box">
-
-
-                      <h4>
-                        ✏️ Edit Memory
-                      </h4>
-
-
-                      <textarea
-                        value={editText}
-                        onChange={(e) =>
-                          setEditText(
-                            e.target.value
-                          )
-                        }
-                      />
-
-
-                      <div className="edit-actions">
-
-
-                        {/* SAVE CHANGES */}
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleUpdateMemory(
-                              memoryItem.memory_id
-                            )
-                          }
-                        >
-
-                          💾 Save Changes
-
-                        </button>
-
-
-                        {/* CANCEL */}
-
-                        <button
-                          type="button"
-                          onClick={
-                            cancelEdit
-                          }
-                        >
-
-                          ❌ Cancel
-
-                        </button>
-
+                        <h3>
+                          {memoryItem.fact ||
+                           memoryItem.value}
+                        </h3>
 
                       </div>
 
 
+                      <div className="memory-confidence">
+
+                        <span>
+                          Confidence
+                        </span>
+
+                        <strong>
+
+                          {typeof memoryItem.confidence === 'number'
+                            ? `${Math.round(
+                                memoryItem.confidence * 100
+                              )}%`
+                            : 'N/A'}
+
+                        </strong>
+
+                      </div>
+
                     </div>
 
-                  )}
+
+                    <div className="memory-meta">
+
+                      <span>
+                        📌 {memoryItem.source || 'unknown'}
+                      </span>
+
+                      {memoryItem.created_at && (
+
+                        <span>
+
+                          🕒 {new Date(
+                            memoryItem.created_at
+                          ).toLocaleDateString()}
+
+                        </span>
+
+                      )}
+
+                    </div>
 
 
-                </div>
+                    <div className="memory-actions">
 
-              )
-            )
+                      <button
+                        type="button"
+                        className="edit-button"
+                        onClick={() =>
+                          startEdit(memoryItem)
+                        }
+                      >
+                        ✏️ Edit
+                      </button>
+
+
+                      <button
+                        type="button"
+                        className="delete-button"
+                        onClick={() =>
+                          handleDeleteMemory(
+                            memoryItem.memory_id
+                          )
+                        }
+                        disabled={
+                          loadingAction === 'delete'
+                        }
+                      >
+
+                        {loadingAction === 'delete'
+                          ? 'Deleting...'
+                          : '🗑️ Delete'}
+
+                      </button>
+
+                    </div>
+
+
+                    {editingMemory ===
+                      memoryItem.memory_id && (
+
+                      <div className="edit-box">
+
+                        <div className="edit-title">
+                          ✏️ Edit Memory
+                        </div>
+
+
+                        <textarea
+                          value={editText}
+                          onChange={(e) =>
+                            setEditText(
+                              e.target.value
+                            )
+                          }
+                        />
+
+
+                        <div className="edit-actions">
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleUpdateMemory(
+                                memoryItem.memory_id
+                              )
+                            }
+                            disabled={
+                              loadingAction === 'update'
+                            }
+                          >
+
+                            {loadingAction === 'update'
+                              ? 'Updating...'
+                              : '💾 Save Changes'}
+
+                          </button>
+
+
+                          <button
+                            type="button"
+                            className="cancel-button"
+                            onClick={cancelEdit}
+                          >
+
+                            Cancel
+
+                          </button>
+
+                        </div>
+
+                      </div>
+
+                    )}
+
+                  </div>
+
+                )
+              )}
+
+            </div>
 
           )}
 
         </section>
 
 
-        {/* ================= SAVE MEMORY ================= */}
+        {/* =====================================
+            SAVE MEMORY
+        ===================================== */}
 
         <section className="card">
 
+          <div className="section-header">
 
-          <h2>
-            ➕ Save Memory
-          </h2>
+            <div>
 
+              <div className="section-title">
 
-          <p>
-            Save something important about the user.
-          </p>
+                <span className="section-icon">
+                  ➕
+                </span>
+
+                <h2>
+                  Save Memory
+                </h2>
+
+              </div>
+
+              <p>
+                Tell the AI something important about the user.
+              </p>
+
+            </div>
+
+          </div>
 
 
           <textarea
+            className="main-textarea"
             placeholder="Example: I love listening to Arijit Singh while travelling."
             value={memory}
             onChange={(e) =>
-              setMemory(
-                e.target.value
-              )
+              setMemory(e.target.value)
             }
           />
 
 
-          <button
-            type="button"
-            onClick={
-              handleSaveMemory
-            }
-          >
+          <div className="input-footer">
 
-            Save Memory
+            <span>
+              {memory.length} characters
+            </span>
 
-          </button>
 
+            <button
+              type="button"
+              onClick={handleSaveMemory}
+              disabled={
+                loadingAction === 'save'
+              }
+            >
+
+              {loadingAction === 'save'
+                ? 'Saving...'
+                : '💾 Save Memory'}
+
+            </button>
+
+          </div>
 
         </section>
 
 
-        {/* ================= SEARCH MEMORY ================= */}
+        {/* =====================================
+            SEARCH
+        ===================================== */}
 
         <section className="card">
 
+          <div className="section-header">
 
-          <h2>
-            🔍 Search Memory
-          </h2>
+            <div>
+
+              <div className="section-title">
+
+                <span className="section-icon">
+                  🔍
+                </span>
+
+                <h2>
+                  Search Memory
+                </h2>
+
+              </div>
+
+              <p>
+                Find memories using semantic search.
+              </p>
+
+            </div>
+
+          </div>
 
 
-          <p>
-            Search the user's saved memories.
-          </p>
+          <div className="search-row">
+
+            <input
+              type="text"
+              placeholder="What do you remember about my music?"
+              value={searchQuery}
+              onChange={(e) =>
+                setSearchQuery(
+                  e.target.value
+                )
+              }
+              onKeyDown={(e) => {
+
+                if (e.key === 'Enter') {
+                  handleSearchMemory()
+                }
+
+              }}
+            />
 
 
-          <input
-            type="text"
-            placeholder="What do you remember about my music?"
-            value={searchQuery}
-            onChange={(e) =>
-              setSearchQuery(
-                e.target.value
-              )
-            }
-          />
+            <button
+              type="button"
+              onClick={handleSearchMemory}
+              disabled={
+                loadingAction === 'search'
+              }
+            >
 
+              {loadingAction === 'search'
+                ? 'Searching...'
+                : '🔍 Search'}
 
-          <button
-            type="button"
-            onClick={
-              handleSearchMemory
-            }
-          >
+            </button>
 
-            Search Memory
-
-          </button>
-
+          </div>
 
         </section>
 
 
-        {/* ================= SEARCH RESULTS ================= */}
+        {/* =====================================
+            SEARCH RESULTS
+        ===================================== */}
 
         {searchResults.length > 0 && (
 
           <section className="card">
 
+            <div className="section-header">
 
-            <h2>
-              📋 Search Results
-            </h2>
+              <div>
 
+                <div className="section-title">
 
-            {searchResults.map(
-              (result, index) => (
+                  <span className="section-icon">
+                    📋
+                  </span>
 
-                <div
-                  key={index}
-                  className="result"
-                >
-
-
-                  <strong>
-                    {result.fact ||
-                     result.value}
-                  </strong>
-
-
-                  <p>
-
-                    Type: {result.type}
-
-                    {' | '}
-
-                    Score:{' '}
-
-                    {typeof result.score ===
-                      'number'
-                      ? result.score.toFixed(3)
-                      : 'N/A'}
-
-                  </p>
-
+                  <h2>
+                    Search Results
+                  </h2>
 
                 </div>
 
-              )
-            )}
+                <p>
+                  Memories ranked by semantic relevance.
+                </p>
 
+              </div>
+
+
+              <span className="count-badge">
+                {searchResults.length}
+              </span>
+
+            </div>
+
+
+            <div className="search-results">
+
+              {searchResults.map(
+                (result, index) => {
+
+                  const percentage =
+                    getScorePercent(
+                      result.final_score ??
+                      result.similarity_score ??
+                      result.score
+                    )
+
+
+                  return (
+
+                    <div
+                      className="result"
+                      key={
+                        result.memory_id ||
+                        index
+                      }
+                    >
+
+                      <div className="result-number">
+                        {index + 1}
+                      </div>
+
+
+                      <div className="result-content">
+
+                        <span className="memory-type">
+                          {result.type || 'memory'}
+                        </span>
+
+
+                        <strong>
+                          {result.fact ||
+                           result.value}
+                        </strong>
+
+
+                        <div className="result-meta">
+
+                          {percentage !== null && (
+
+                            <div className="score">
+
+                              <span>
+                                Relevance
+                              </span>
+
+
+                              <div className="score-bar">
+
+                                <div
+                                  className="score-fill"
+                                  style={{
+                                    width: `${percentage}%`
+                                  }}
+                                />
+
+                              </div>
+
+
+                              <strong>
+                                {percentage}%
+                              </strong>
+
+                            </div>
+
+                          )}
+
+                        </div>
+
+                      </div>
+
+                    </div>
+
+                  )
+
+                }
+              )}
+
+            </div>
 
           </section>
 
         )}
 
 
-        {/* ================= ASK MEMORY ================= */}
+        {/* =====================================
+            ASK MEMORY
+        ===================================== */}
 
-        <section className="card">
+        <section className="card ask-card">
+
+          <div className="section-header">
+
+            <div>
+
+              <div className="section-title">
+
+                <span className="section-icon">
+                  ✨
+                </span>
+
+                <h2>
+                  Ask Memory
+                </h2>
+
+              </div>
+
+              <p>
+                Ask the AI questions using stored memories.
+              </p>
+
+            </div>
 
 
-          <h2>
-            💬 Ask Memory
-          </h2>
+            <span className="ai-badge">
+              AI
+            </span>
+
+          </div>
 
 
-          <p>
-            Ask a question using the user's memories.
-          </p>
+          <div className="ask-input">
+
+            <input
+              type="text"
+              placeholder="Example: What kind of music do I like?"
+              value={question}
+              onChange={(e) =>
+                setQuestion(
+                  e.target.value
+                )
+              }
+              onKeyDown={(e) => {
+
+                if (e.key === 'Enter') {
+                  handleAskMemory()
+                }
+
+              }}
+            />
 
 
-          <input
-            type="text"
-            placeholder="Example: What kind of music do I like?"
-            value={question}
-            onChange={(e) =>
-              setQuestion(
-                e.target.value
-              )
-            }
-          />
+            <button
+              type="button"
+              onClick={handleAskMemory}
+              disabled={
+                loadingAction === 'ask'
+              }
+            >
+
+              {loadingAction === 'ask'
+                ? 'Thinking...'
+                : '✨ Ask AI'}
+
+            </button>
+
+          </div>
 
 
-          <button
-            type="button"
-            onClick={
-              handleAskMemory
-            }
-          >
+          {aiAnswer && (
 
-            Ask Memory
+            <div className="ai-answer">
 
-          </button>
+              <div className="ai-answer-header">
 
+                <div className="ai-avatar">
+                  ✨
+                </div>
+
+
+                <div>
+
+                  <strong>
+                    AI Memory Assistant
+                  </strong>
+
+                  <span>
+                    Answer based on stored memories
+                  </span>
+
+                </div>
+
+              </div>
+
+
+              <div className="ai-answer-text">
+
+                {aiAnswer}
+
+              </div>
+
+            </div>
+
+          )}
 
         </section>
 
 
-        {/* ================= STATUS ================= */}
+        {/* =====================================
+            FOOTER
+        ===================================== */}
 
-        {message && (
+        <footer className="footer">
 
-          <div className="message">
+          <span>
+            🧠 Spotify AI Memory
+          </span>
 
-            {message}
+          <span>
+            Personalized • Semantic • AI Powered
+          </span>
 
-          </div>
-
-        )}
+        </footer>
 
 
       </main>
@@ -954,6 +1646,7 @@ function App() {
     </div>
 
   )
+
 }
 
 
