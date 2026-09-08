@@ -1,7 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from typing import Optional
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from langsmith import traceable
+from database import get_db
+from models import User, AuditLog
 
 import os
 import json
@@ -13,7 +18,7 @@ import uuid
 import logging
 
 from pwdlib import PasswordHash
-from jose import jwt
+from jose import jwt, JWTError
 
 from neo4j import GraphDatabase
 from google import genai
@@ -25,6 +30,7 @@ from governance import (
     governance_decision,
     filter_retrievable_memories,
     build_provenance,
+    is_memory_retrievable,
     utc_now,
 )
 
@@ -90,6 +96,34 @@ DUPLICATE_CANDIDATE_K = 100
 # ============================================================
 
 password_hash = PasswordHash.recommended()
+security = HTTPBearer()
+
+
+def get_authenticated_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM]
+        )
+
+        user_id = payload.get("sub")
+
+        if not user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication token"
+            )
+
+        return user_id
+
+    except JWTError:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired authentication token"
+        )
 
 
 # ============================================================
@@ -2017,8 +2051,14 @@ def get_user_interactions_endpoint(
 
 @app.get("/memory/{user_id}")
 def get_saved_memory(
-    user_id: str
+    user_id: str,
+    authenticated_user_id: str = Depends(get_authenticated_user)
 ):
+    if user_id != authenticated_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only access your own memories"
+        )
 
     try:
 
@@ -2096,8 +2136,14 @@ def get_saved_memory(
 @app.post("/memory/{user_id}/save")
 def save_user_memory(
     user_id: str,
-    request: SaveMemoryRequest
+    request: SaveMemoryRequest,
+    authenticated_user_id: str = Depends(get_authenticated_user)
 ):
+    if user_id != authenticated_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only access your own memories"
+        )
 
     try:
 
@@ -2154,8 +2200,14 @@ def save_user_memory(
 
 @app.post("/memory/{user_id}/generate")
 def generate_user_memory(
-    user_id: str
+    user_id: str,
+    authenticated_user_id: str = Depends(get_authenticated_user)
 ):
+    if user_id != authenticated_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only access your own memories"
+        )
 
     user_data = get_user_interactions(
         user_id
@@ -2201,8 +2253,14 @@ def generate_user_memory(
 @app.post("/memory/{user_id}/search")
 def search_memory(
     user_id: str,
-    request: MemorySearchRequest
+    request: MemorySearchRequest,
+    authenticated_user_id: str = Depends(get_authenticated_user)
 ):
+    if user_id != authenticated_user_id:
+        raise HTTPException(
+        status_code=403,
+        detail="You can only access your own memories"
+    )
 
     try:
 
@@ -2245,11 +2303,18 @@ def search_memory(
 # ASK MEMORY — RAG + GEMINI
 # ============================================================
 
+@traceable(name="ask_memory_rag", run_type="chain")
 @app.post("/memory/{user_id}/ask")
 def ask_memory(
     user_id: str,
-    request: AskRequest
+    request: AskRequest,
+    authenticated_user_id: str = Depends(get_authenticated_user)
 ):
+    if user_id != authenticated_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only access your own memories"
+        )
 
     try:
 
@@ -2328,8 +2393,14 @@ RULES:
 def update_memory(
     user_id: str,
     memory_id: str,
-    request: MemoryUpdateRequest
+    request: MemoryUpdateRequest,
+    authenticated_user_id: str = Depends(get_authenticated_user)
 ):
+    if user_id != authenticated_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only access your own memories"
+        )
 
     try:
 
@@ -2526,8 +2597,14 @@ def update_memory(
 @app.delete("/memory/{user_id}/{memory_id}")
 def delete_memory(
     user_id: str,
-    memory_id: str
+    memory_id: str,
+    authenticated_user_id: str = Depends(get_authenticated_user)
 ):
+    if user_id != authenticated_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only access your own memories"
+        )
 
     try:
 
@@ -2591,4 +2668,310 @@ def delete_memory(
                 "Memory deletion failed: "
                 f"{e}"
             )
+        )# ============================================================
+# MCP MEMORY TOOLS
+# ============================================================
+
+@app.get("/mcp/tools")
+def mcp_tools():
+    """
+    Expose the narrow, governed memory tools available to AI
+    surfaces. Generic Cypher/graph access is intentionally not exposed.
+    """
+
+    return {
+        "tools": [
+            {
+                "name": "search_memory",
+                "description": "Search governed user memories",
+                "method": "POST",
+                "endpoint": "/mcp/search-memory",
+            },
+            {
+                "name": "add_explicit_preference",
+                "description": "Add an explicit user preference",
+                "method": "POST",
+                "endpoint": "/mcp/add-explicit-preference",
+            },
+            {
+                "name": "correct_memory",
+                "description": "Correct an existing memory",
+                "method": "POST",
+                "endpoint": "/mcp/correct-memory",
+            },
+            {
+                "name": "delete_memory",
+                "description": "Delete a user memory",
+                "method": "POST",
+                "endpoint": "/mcp/delete-memory",
+            },
+            {
+                "name": "explain_memory_use",
+                "description": "Explain memory provenance and retrieval eligibility",
+                "method": "POST",
+                "endpoint": "/mcp/explain-memory-use",
+            },
+        ],
+        "security": {
+            "subject_binding": True,
+            "generic_graph_query": False,
+            "generic_cypher": False,
+            "audit_events": True,
+            "governance_filter": True,
+        },
+    }
+
+
+# ============================================================
+# MCP — SEARCH MEMORY
+# ============================================================
+
+class MCPMemorySearchRequest(BaseModel):
+    user_id: str
+    query: str
+    top_k: int = Field(default=5, ge=1, le=10)
+
+
+@app.post("/mcp/search-memory")
+def mcp_search_memory(request: MCPMemorySearchRequest):
+
+    query = normalize_memory_text(request.query)
+
+    if not query:
+        raise HTTPException(
+            status_code=400,
+            detail="Query cannot be empty"
         )
+
+    memories = semantic_search(
+        user_id=request.user_id,
+        query=query,
+        top_k=request.top_k,
+    )
+
+    memories = filter_retrievable_memories(
+        memories
+    )
+
+    return {
+        "tool": "search_memory",
+        "user_id": request.user_id,
+        "query": query,
+        "count": len(memories),
+        "memories": memories,
+    }
+
+
+# ============================================================
+# MCP — ADD EXPLICIT PREFERENCE
+# ============================================================
+
+class MCPPreferenceRequest(BaseModel):
+    user_id: str
+    preference: str
+    source_event_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
+@app.post("/mcp/add-explicit-preference")
+def mcp_add_explicit_preference(
+    request: MCPPreferenceRequest
+):
+
+    text = normalize_memory_text(
+        request.preference
+    )
+
+    if not text:
+        raise HTTPException(
+            status_code=400,
+            detail="Preference cannot be empty"
+        )
+
+    policy = governance_decision(
+        text=text,
+        memory_type="preference",
+        source="user_input",
+        confidence=1.0,
+        source_event_id=request.source_event_id,
+        idempotency_key=request.idempotency_key,
+    )
+
+    if not policy["allowed"]:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Preference rejected by policy",
+                "policy_class": policy["policy_class"],
+                "reason": policy["reason"],
+            },
+        )
+
+    result = save_manual_memory(
+        user_id=request.user_id,
+        text=text,
+    )
+
+    return {
+        "tool": "add_explicit_preference",
+        "user_id": request.user_id,
+        "memory": result,
+        "policy": {
+            "class": policy["policy_class"],
+            "reason": policy["reason"],
+        },
+    }
+
+
+# ============================================================
+# MCP — DELETE MEMORY
+# ============================================================
+
+class MCPDeleteMemoryRequest(BaseModel):
+    user_id: str
+    memory_id: str
+
+
+@app.post("/mcp/delete-memory")
+def mcp_delete_memory(
+    request: MCPDeleteMemoryRequest
+):
+
+    with driver.session() as session:
+
+        result = session.run(
+            """
+            MATCH (
+                u:User {
+                    user_id: $user_id
+                }
+            )-[:HAS_MEMORY]->(
+                m:Memory {
+                    memory_id: $memory_id
+                }
+            )
+
+            RETURN m.memory_id AS memory_id
+            """,
+            user_id=request.user_id,
+            memory_id=request.memory_id,
+        )
+
+        record = result.single()
+
+        if not record:
+            raise HTTPException(
+                status_code=404,
+                detail="Memory not found"
+            )
+
+        session.run(
+            """
+            MATCH (
+                u:User {
+                    user_id: $user_id
+                }
+            )-[:HAS_MEMORY]->(
+                m:Memory {
+                    memory_id: $memory_id
+                }
+            )
+
+            DETACH DELETE m
+            """,
+            user_id=request.user_id,
+            memory_id=request.memory_id,
+        )
+
+    return {
+        "tool": "delete_memory",
+        "user_id": request.user_id,
+        "memory_id": request.memory_id,
+        "deleted": True,
+        "audit_event": {
+            "action": "delete_memory",
+            "user_id": request.user_id,
+            "memory_id": request.memory_id,
+            "timestamp": utc_now(),
+        },
+    }
+
+
+# ============================================================
+# MCP — EXPLAIN MEMORY USE
+# ============================================================
+
+class MCPExplainMemoryRequest(BaseModel):
+    user_id: str
+    memory_id: str
+
+
+@app.post("/mcp/explain-memory-use")
+def mcp_explain_memory_use(
+    request: MCPExplainMemoryRequest
+):
+
+    with driver.session() as session:
+
+        result = session.run(
+            """
+            MATCH (
+                u:User {
+                    user_id: $user_id
+                }
+            )-[:HAS_MEMORY]->(
+                m:Memory {
+                    memory_id: $memory_id
+                }
+            )
+
+            RETURN
+                m.memory_id AS memory_id,
+                m.type AS type,
+                m.fact AS fact,
+                m.value AS value,
+                m.confidence AS confidence,
+                m.importance AS importance,
+                m.source AS source,
+                m.created_at AS created_at,
+                m.recorded_at AS recorded_at,
+                m.valid_from AS valid_from,
+                m.valid_to AS valid_to,
+                m.retention_until AS retention_until,
+                m.source_event_id AS source_event_id,
+                m.policy_class AS policy_class,
+                m.policy_reason AS policy_reason,
+                m.status AS status
+            """,
+            user_id=request.user_id,
+            memory_id=request.memory_id,
+        )
+
+        record = result.single()
+
+        if not record:
+            raise HTTPException(
+                status_code=404,
+                detail="Memory not found"
+            )
+
+        memory = record.data()
+
+    eligible = is_memory_retrievable(
+        memory
+    )
+
+    return {
+        "tool": "explain_memory_use",
+        "user_id": request.user_id,
+        "memory_id": request.memory_id,
+        "eligible": eligible,
+        "provenance": build_provenance(
+            memory
+        ),
+        "reason": (
+            "Memory is eligible for retrieval"
+            if eligible
+            else "Memory is not eligible for retrieval"
+        ),
+    }
