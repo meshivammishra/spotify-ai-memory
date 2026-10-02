@@ -1,5 +1,7 @@
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -204,6 +206,7 @@ app.add_middleware(
 # ============================================================
 
 BASE_DIR = Path(__file__).parent.parent
+FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 
 DATA_FILE = (
     BASE_DIR /
@@ -2975,3 +2978,28 @@ def mcp_explain_memory_use(
             else "Memory is not eligible for retrieval"
         ),
     }
+# ============================================================
+# SERVE REACT FRONTEND
+# ============================================================
+
+if FRONTEND_DIST.exists():
+
+    app.mount(
+        "/assets",
+        StaticFiles(
+            directory=FRONTEND_DIST / "assets"
+        ),
+        name="assets"
+    )
+
+    @app.get("/{full_path:path}")
+    async def serve_react_app(full_path: str):
+
+        file_path = FRONTEND_DIST / full_path
+
+        if file_path.is_file():
+            return FileResponse(file_path)
+
+        return FileResponse(
+            FRONTEND_DIST / "index.html"
+        )

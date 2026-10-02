@@ -1,4 +1,14 @@
-const API_URL = "http://127.0.0.1:8000";
+// ============================================================
+// API CONFIGURATION
+// ============================================================
+
+// Local:
+// VITE_API_URL=http://127.0.0.1:8000
+//
+// Production:
+// VITE_API_URL=https://your-backend.onrender.com
+
+const API_URL = "";
 
 
 // ============================================================
@@ -6,6 +16,55 @@ const API_URL = "http://127.0.0.1:8000";
 // ============================================================
 
 const USER_STORAGE_KEY = "spotify_ai_current_user";
+const TOKEN_STORAGE_KEY = "spotify_ai_access_token";
+
+
+// ============================================================
+// COMMON RESPONSE HANDLER
+// ============================================================
+
+async function handleResponse(response) {
+
+  let data = {};
+
+  try {
+    data = await response.json();
+  } catch (error) {
+    data = {};
+  }
+
+  if (!response.ok) {
+
+    throw new Error(
+      data.detail ||
+      data.message ||
+      `Request failed with status ${response.status}`
+    );
+  }
+
+  return data;
+}
+
+
+// ============================================================
+// AUTH HEADERS
+// ============================================================
+
+function getAuthHeaders() {
+
+  const token =
+    localStorage.getItem(TOKEN_STORAGE_KEY);
+
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+}
 
 
 // ============================================================
@@ -42,6 +101,18 @@ export function getCurrentUser() {
 
 
 // ============================================================
+// GET ACCESS TOKEN
+// ============================================================
+
+export function getAccessToken() {
+
+  return localStorage.getItem(
+    TOKEN_STORAGE_KEY
+  );
+}
+
+
+// ============================================================
 // LOGOUT
 // ============================================================
 
@@ -51,6 +122,9 @@ export function logout() {
     USER_STORAGE_KEY
   );
 
+  localStorage.removeItem(
+    TOKEN_STORAGE_KEY
+  );
 }
 
 
@@ -74,25 +148,14 @@ export async function registerUser(
       },
 
       body: JSON.stringify({
-        name: name,
-        email: email,
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
         password: password,
       }),
     }
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-
-    throw new Error(
-      data.detail ||
-      "Registration failed"
-    );
-
-  }
-
-  return data;
+  return await handleResponse(response);
 }
 
 
@@ -115,32 +178,39 @@ export async function loginUser(
       },
 
       body: JSON.stringify({
-        email: email,
+        email: email.trim().toLowerCase(),
         password: password,
       }),
     }
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-
-    throw new Error(
-      data.detail ||
-      "Login failed"
-    );
-
-  }
+  const data =
+    await handleResponse(response);
 
 
-  // Save logged-in user
+  // ----------------------------------------------------------
+  // SAVE USER
+  // ----------------------------------------------------------
+
   if (data.user) {
 
     localStorage.setItem(
       USER_STORAGE_KEY,
       JSON.stringify(data.user)
     );
+  }
 
+
+  // ----------------------------------------------------------
+  // SAVE JWT
+  // ----------------------------------------------------------
+
+  if (data.access_token) {
+
+    localStorage.setItem(
+      TOKEN_STORAGE_KEY,
+      data.access_token
+    );
   }
 
 
@@ -155,21 +225,14 @@ export async function loginUser(
 export async function getUsers() {
 
   const response = await fetch(
-    `${API_URL}/users`
+    `${API_URL}/users`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(),
+    }
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-
-    throw new Error(
-      data.detail ||
-      "Failed to load users"
-    );
-
-  }
-
-  return data;
+  return await handleResponse(response);
 }
 
 
@@ -177,35 +240,62 @@ export async function getUsers() {
 // CREATE USER
 // ============================================================
 
-export async function createUser(name) {
+export async function createUser(
+  name
+) {
 
   const response = await fetch(
     `${API_URL}/users`,
     {
       method: "POST",
 
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: getAuthHeaders(),
 
       body: JSON.stringify({
-        name: name,
+        name: name.trim(),
       }),
     }
   );
 
-  const data = await response.json();
+  return await handleResponse(response);
+}
 
-  if (!response.ok) {
 
-    throw new Error(
-      data.detail ||
-      "Failed to create user"
-    );
+// ============================================================
+// GET ALL INTERACTIONS
+// ============================================================
 
-  }
+export async function getInteractions() {
 
-  return data;
+  const response = await fetch(
+    `${API_URL}/interactions`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return await handleResponse(response);
+}
+
+
+// ============================================================
+// GET USER INTERACTIONS
+// ============================================================
+
+export async function getUserInteractions(
+  userId
+) {
+
+  const response = await fetch(
+    `${API_URL}/interactions/${userId}`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return await handleResponse(response);
 }
 
 
@@ -213,24 +303,19 @@ export async function createUser(name) {
 // GET MEMORIES
 // ============================================================
 
-export async function getMemories(userId) {
+export async function getMemories(
+  userId
+) {
 
   const response = await fetch(
-    `${API_URL}/memory/${userId}`
+    `${API_URL}/memory/${userId}`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(),
+    }
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-
-    throw new Error(
-      data.detail ||
-      "Failed to load memories"
-    );
-
-  }
-
-  return data;
+  return await handleResponse(response);
 }
 
 
@@ -248,28 +333,36 @@ export async function saveMemory(
     {
       method: "POST",
 
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: getAuthHeaders(),
 
       body: JSON.stringify({
-        text: text,
+        text: text.trim(),
       }),
     }
   );
 
-  const data = await response.json();
+  return await handleResponse(response);
+}
 
-  if (!response.ok) {
 
-    throw new Error(
-      data.detail ||
-      "Failed to save memory"
-    );
+// ============================================================
+// GENERATE MEMORY
+// ============================================================
 
-  }
+export async function generateMemory(
+  userId
+) {
 
-  return data;
+  const response = await fetch(
+    `${API_URL}/memory/${userId}/generate`,
+    {
+      method: "POST",
+
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return await handleResponse(response);
 }
 
 
@@ -279,7 +372,8 @@ export async function saveMemory(
 
 export async function searchMemory(
   userId,
-  query
+  query,
+  topK = 3
 ) {
 
   const response = await fetch(
@@ -287,28 +381,16 @@ export async function searchMemory(
     {
       method: "POST",
 
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: getAuthHeaders(),
 
       body: JSON.stringify({
-        query: query,
+        query: query.trim(),
+        top_k: topK,
       }),
     }
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-
-    throw new Error(
-      data.detail ||
-      "Failed to search memory"
-    );
-
-  }
-
-  return data;
+  return await handleResponse(response);
 }
 
 
@@ -326,28 +408,15 @@ export async function askMemory(
     {
       method: "POST",
 
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: getAuthHeaders(),
 
       body: JSON.stringify({
-        question: question,
+        question: question.trim(),
       }),
     }
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-
-    throw new Error(
-      data.detail ||
-      "Failed to ask memory"
-    );
-
-  }
-
-  return data;
+  return await handleResponse(response);
 }
 
 
@@ -366,26 +435,16 @@ export async function updateMemory(
     {
       method: "PUT",
 
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: getAuthHeaders(),
 
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        fact: data.fact,
+        value: data.value,
+      }),
     }
   );
 
-  const result = await response.json();
-
-  if (!response.ok) {
-
-    throw new Error(
-      result.detail ||
-      "Failed to update memory"
-    );
-
-  }
-
-  return result;
+  return await handleResponse(response);
 }
 
 
@@ -402,19 +461,20 @@ export async function deleteMemory(
     `${API_URL}/memory/${userId}/${memoryId}`,
     {
       method: "DELETE",
+
+      headers: getAuthHeaders(),
     }
   );
 
-  const result = await response.json();
+  return await handleResponse(response);
+}
 
-  if (!response.ok) {
 
-    throw new Error(
-      result.detail ||
-      "Failed to delete memory"
-    );
+// ============================================================
+// API URL
+// ============================================================
 
-  }
+export function getApiUrl() {
 
-  return result;
+  return API_URL;
 }
