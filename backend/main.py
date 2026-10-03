@@ -11,6 +11,7 @@ from database import get_db
 from models import User, AuditLog
 
 import os
+import re
 import json
 from pathlib import Path
 from collections import Counter
@@ -89,8 +90,9 @@ if not JWT_SECRET_KEY:
 # DUPLICATE DETECTION CONFIGURATION
 # ============================================================
 
-DUPLICATE_SIMILARITY_THRESHOLD = 0.88
+DUPLICATE_SIMILARITY_THRESHOLD = 0.93
 DUPLICATE_CANDIDATE_K = 100
+DUPLICATE_TOKEN_OVERLAP_THRESHOLD = 0.30
 
 
 # ============================================================
@@ -954,14 +956,12 @@ def save_memory_to_neo4j(
 def find_similar_memory(
     user_id: str,
     embedding: list,
+    source_text: str,
     threshold: float = DUPLICATE_SIMILARITY_THRESHOLD,
     exclude_memory_id: str = None
 ):
-
     try:
-
         with driver.session() as session:
-
             result = session.run(
                 """
                 CALL db.index.vector.queryNodes(
@@ -998,13 +998,9 @@ def find_similar_memory(
 
                 ORDER BY score DESC
                 """,
-
                 user_id=user_id,
-
                 candidate_k=DUPLICATE_CANDIDATE_K,
-
                 embedding=embedding,
-
                 exclude_memory_id=exclude_memory_id
             )
 
@@ -1015,54 +1011,35 @@ def find_similar_memory(
 
             best = records[0]
 
-            similarity = float(
-                best["score"] or 0.0
+            similarity = float(best["score"] or 0.0)
+
+            token_overlap = calculate_token_overlap(
+                source_text,
+                best["fact"] or ""
             )
 
-            if similarity >= threshold:
-
+            if (
+                similarity >= threshold
+                and token_overlap >= DUPLICATE_TOKEN_OVERLAP_THRESHOLD
+            ):
                 return {
-
-                    "memory_id":
-                        best["memory_id"],
-
-                    "type":
-                        best["type"],
-
-                    "fact":
-                        best["fact"],
-
-                    "value":
-                        best["value"],
-
-                    "confidence":
-                        best["confidence"],
-
-                    "importance":
-                        best["importance"],
-
-                    "source":
-                        best["source"],
-
-                    "created_at":
-                        best["created_at"],
-
-                    "status":
-                        best["status"],
-
-                    "similarity":
-                        similarity
+                    "memory_id": best["memory_id"],
+                    "type": best["type"],
+                    "fact": best["fact"],
+                    "value": best["value"],
+                    "confidence": best["confidence"],
+                    "importance": best["importance"],
+                    "source": best["source"],
+                    "created_at": best["created_at"],
+                    "status": best["status"],
+                    "similarity": similarity,
+                    "token_overlap": token_overlap
                 }
 
             return None
 
     except Exception as e:
-
-        logger.warning(
-            "Similar memory check failed: %s",
-            e
-        )
-
+        logger.warning("Similar memory check failed: %s", e)
         return None
 
 # ============================================================
@@ -1212,13 +1189,11 @@ def save_manual_memory(
     # --------------------------------------------------------
 
     similar_memory = find_similar_memory(
-
-        user_id=user_id,
-
-        embedding=embedding,
-
-        threshold=DUPLICATE_SIMILARITY_THRESHOLD
-    )
+    user_id=user_id,
+    embedding=embedding,
+    source_text=text,
+    threshold=DUPLICATE_SIMILARITY_THRESHOLD
+)
 
     if similar_memory:
 
