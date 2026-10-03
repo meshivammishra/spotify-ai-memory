@@ -1621,8 +1621,8 @@ Source: {source}
 # HOME
 # ============================================================
 
-@app.get("/")
-def home():
+@app.get("/health")
+def health_check():
 
     return {
 
