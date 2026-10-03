@@ -18,7 +18,7 @@ from datetime import datetime, timezone, timedelta
 import math
 import uuid
 import logging
-
+from models import Interaction
 from pwdlib import PasswordHash
 from jose import jwt, JWTError
 
@@ -331,23 +331,24 @@ class MemoryUpdateRequest(BaseModel):
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
+def load_interactions(db):
+    interactions = db.query(Interaction).order_by(
+        Interaction.timestamp.asc()
+    ).all()
 
-def load_interactions():
-
-    if not DATA_FILE.exists():
-
-        raise FileNotFoundError(
-            f"Interaction file not found: {DATA_FILE}"
-        )
-
-    with open(
-        DATA_FILE,
-        "r",
-        encoding="utf-8"
-    ) as file:
-
-        return json.load(file)
-
+    return [
+        {
+            "id": interaction.id,
+            "user_id": interaction.user_id,
+            "timestamp": interaction.timestamp.isoformat(),
+            "type": interaction.type,
+            "artist": interaction.artist,
+            "track": interaction.track,
+            "genre": interaction.genre,
+            "context": interaction.context,
+        }
+        for interaction in interactions
+    ]
 
 # ============================================================
 # JWT TOKEN CREATION
@@ -517,20 +518,25 @@ def user_exists(user_id: str):
 # ============================================================
 # GET USER INTERACTIONS
 # ============================================================
-
-def get_user_interactions(
-    user_id: str
-):
-
-    interactions = load_interactions()
+def get_user_interactions(db, user_id: str):
+    interactions = db.query(Interaction).filter(
+        Interaction.user_id == user_id
+    ).order_by(
+        Interaction.timestamp.asc()
+    ).all()
 
     return [
-
-        interaction
-
+        {
+            "id": interaction.id,
+            "user_id": interaction.user_id,
+            "timestamp": interaction.timestamp.isoformat(),
+            "type": interaction.type,
+            "artist": interaction.artist,
+            "track": interaction.track,
+            "genre": interaction.genre,
+            "context": interaction.context,
+        }
         for interaction in interactions
-
-        if interaction.get("user_id") == user_id
     ]
 
 
@@ -2008,17 +2014,14 @@ def get_users():
 # ============================================================
 
 @app.get("/interactions")
-def get_interactions():
-
-    interactions = load_interactions()
+def get_interactions(
+    db=Depends(get_db),
+):
+    interactions = load_interactions(db)
 
     return {
-
-        "count":
-            len(interactions),
-
-        "interactions":
-            interactions
+        "count": len(interactions),
+        "interactions": interactions,
     }
 
 
@@ -2028,12 +2031,14 @@ def get_interactions():
 
 @app.get("/interactions/{user_id}")
 def get_user_interactions_endpoint(
-    user_id: str
+    user_id: str,
+    db=Depends(get_db),
 ):
 
     user_data = get_user_interactions(
-        user_id
-    )
+    db,
+    user_id
+)
 
     return {
 
@@ -2204,6 +2209,7 @@ def save_user_memory(
 @app.post("/memory/{user_id}/generate")
 def generate_user_memory(
     user_id: str,
+    db=Depends(get_db),
     authenticated_user_id: str = Depends(get_authenticated_user)
 ):
     if user_id != authenticated_user_id:
@@ -2213,8 +2219,9 @@ def generate_user_memory(
         )
 
     user_data = get_user_interactions(
-        user_id
-    )
+    db,
+    user_id
+)
 
     if not user_data:
 

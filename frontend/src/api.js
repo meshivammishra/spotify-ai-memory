@@ -8,7 +8,9 @@
 // Production:
 // VITE_API_URL=https://your-backend.onrender.com
 
-const API_URL = "";
+const API_URL = import.meta.env.DEV
+  ? "http://127.0.0.1:8000"
+  : "";
 
 
 // ============================================================

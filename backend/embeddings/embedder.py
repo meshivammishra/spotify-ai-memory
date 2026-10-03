@@ -1,17 +1,31 @@
-from sentence_transformers import SentenceTransformer
+﻿import os
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
+load_dotenv()
 
-# Load the embedding model
-model = SentenceTransformer("all-MiniLM-L6-v2")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY is missing")
+
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def create_embedding(text: str):
     """
-    Convert text into a numerical vector.
+    Generate a 384-dimensional embedding using Gemini.
     """
-    embedding = model.encode(text)
+    result = client.models.embed_content(
+        model="gemini-embedding-001",
+        contents=text,
+        config=types.EmbedContentConfig(
+            output_dimensionality=384
+        )
+    )
 
-    return embedding.tolist()
+    return result.embeddings[0].values
 
 
 if __name__ == "__main__":

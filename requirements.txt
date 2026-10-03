@@ -1,4 +1,4 @@
-altair==6.2.2
+﻿altair==6.2.2
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.14.2
@@ -63,7 +63,6 @@ rich==15.0.0
 rpds-py==2026.6.3
 rsa==4.9.1
 safetensors==0.8.0
-sentence-transformers
 setuptools==84.0.0
 shellingham==1.5.4
 six==1.17.0
