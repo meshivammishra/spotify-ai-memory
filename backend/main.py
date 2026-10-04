@@ -328,6 +328,74 @@ class MemoryUpdateRequest(BaseModel):
         min_length=1,
         max_length=1000,
     )
+class InteractionEventRequest(BaseModel):
+
+    user_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="User identifier"
+    )
+
+    timestamp: datetime = Field(
+        ...,
+        description="Interaction timestamp"
+    )
+
+    type: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Interaction type"
+    )
+
+    artist: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Artist name"
+    )
+
+    track: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Track name"
+    )
+
+    genre: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Music genre"
+    )
+
+    context: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Listening context"
+    )
+
+    subject_scope: str = Field(
+        default="user",
+        max_length=50,
+        description="Memory subject scope"
+    )
+
+    consent: bool = Field(
+        default=True,
+        description="User consent for storing the event"
+    )
+
+    source_event_id: str | None = Field(
+        default=None,
+        max_length=150,
+        description="Source event identifier"
+    )
+
+    idempotency_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=150,
+        description="Unique key preventing duplicate events"
+    )
 
 
 # ============================================================
@@ -1988,6 +2056,83 @@ def get_users():
 # GET ALL INTERACTIONS
 # ============================================================
 
+# ============================================================
+# CREATE INTERACTION EVENT
+# ============================================================
+
+@app.post("/v1/events")
+def create_event(
+    request: InteractionEventRequest,
+    db=Depends(get_db),
+    authenticated_user_id: str = Depends(get_authenticated_user)
+):
+    if request.user_id != authenticated_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only create events for your own user"
+        )
+
+    if not request.consent:
+        raise HTTPException(
+            status_code=403,
+            detail="Consent is required"
+        )
+
+    existing = db.query(Interaction).filter(
+        Interaction.idempotency_key == request.idempotency_key
+    ).first()
+
+    if existing:
+        return {
+            "message": "Event already exists",
+            "duplicate": True,
+            "interaction": {
+                "id": existing.id,
+                "user_id": existing.user_id,
+                "timestamp": existing.timestamp.isoformat(),
+                "type": existing.type,
+                "artist": existing.artist,
+                "track": existing.track,
+                "genre": existing.genre,
+                "context": existing.context,
+            }
+        }
+
+    interaction = Interaction(
+        user_id=request.user_id,
+        timestamp=request.timestamp,
+        type=request.type,
+        artist=request.artist,
+        track=request.track,
+        genre=request.genre,
+        context=request.context,
+        subject_scope=request.subject_scope,
+        consent=request.consent,
+        source_event_id=request.source_event_id,
+        idempotency_key=request.idempotency_key,
+    )
+
+    db.add(interaction)
+    db.commit()
+    db.refresh(interaction)
+
+    return {
+        "message": "Event stored successfully",
+        "duplicate": False,
+        "interaction": {
+            "id": interaction.id,
+            "user_id": interaction.user_id,
+            "timestamp": interaction.timestamp.isoformat(),
+            "type": interaction.type,
+            "artist": interaction.artist,
+            "track": interaction.track,
+            "genre": interaction.genre,
+            "context": interaction.context,
+        }
+    }
+
+
+
 @app.get("/interactions")
 def get_interactions(
     db=Depends(get_db),
@@ -2454,13 +2599,10 @@ def update_memory(
             )
 
             similar_memory = find_similar_memory(
-
                 user_id=user_id,
-
                 embedding=embedding,
-
+                source_text=request.fact,
                 threshold=DUPLICATE_SIMILARITY_THRESHOLD,
-
                 exclude_memory_id=memory_id
             )
 
