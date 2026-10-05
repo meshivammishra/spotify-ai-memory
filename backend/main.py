@@ -144,7 +144,6 @@ gemini_client = genai.Client(
 # ============================================================
 
 try:
-
     driver = GraphDatabase.driver(
         NEO4J_URI,
         auth=(
@@ -158,7 +157,6 @@ try:
     logger.info("Neo4j connection successful")
 
 except Exception as e:
-
     logger.error(
         "Neo4j connection failed: %s",
         e

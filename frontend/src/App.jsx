@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react'
 import './App.css'
+import Dashboard from './Dashboard'
+import Memories from './Memories'
+import AskAI from './AskAI'
+import Sidebar from './Sidebar'
 
 import {
   loginUser,
@@ -26,6 +30,7 @@ function App() {
   )
 
   const [isRegister, setIsRegister] = useState(false)
+  const [currentPage, setCurrentPage] = useState('dashboard')
 
   const [authName, setAuthName] = useState('')
   const [authEmail, setAuthEmail] = useState('')
@@ -47,6 +52,7 @@ function App() {
   // ==========================================
 
   const [memory, setMemory] = useState('')
+  const [showAddMemory, setShowAddMemory] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [question, setQuestion] = useState('')
 
@@ -104,6 +110,7 @@ function App() {
       )
 
       setCurrentUser(data.user)
+      setCurrentPage('dashboard')
 
       setAuthEmail('')
       setAuthPassword('')
@@ -204,6 +211,7 @@ function App() {
     logout()
 
     setCurrentUser(null)
+    setCurrentPage('dashboard')
 
     setMemories([])
     setSearchResults([])
@@ -220,6 +228,9 @@ function App() {
     setMessageType('')
 
   }
+  function navigateTo(page) {
+  setCurrentPage(page)
+}
 
 
   // ==========================================
@@ -477,61 +488,70 @@ function App() {
 
   async function handleSaveMemory() {
 
-    if (!memory.trim()) {
+  if (!memory.trim()) {
 
-      showMessage(
-        'Please enter a memory first.',
-        'error'
-      )
+    showMessage(
+      'Please enter a memory first.',
+      'error'
+    )
 
-      return
-
-    }
-
-    try {
-
-      setLoadingAction('save')
-
-      showMessage(
-        'Saving memory...',
-        'loading'
-      )
-
-      const data =
-        await saveMemory(
-          userId,
-          memory.trim()
-        )
-
-      setMemory('')
-
-      await loadMemories()
-
-      setLoadingAction('')
-
-      showMessage(
-        data.message ||
-        'Memory saved successfully!',
-        'success'
-      )
-
-    } catch (error) {
-
-      setLoadingAction('')
-
-      console.error(
-        'SAVE ERROR:',
-        error
-      )
-
-      showMessage(
-        `Save failed: ${error.message}`,
-        'error'
-      )
-
-    }
+    return false
 
   }
+
+  try {
+
+    setLoadingAction('save')
+
+    showMessage(
+      'Saving memory...',
+      'loading'
+    )
+
+    const data =
+      await saveMemory(
+        userId,
+        memory.trim()
+      )
+
+    console.log(
+      'SAVE MEMORY RESPONSE:',
+      data
+    )
+
+    setMemory('')
+
+    await loadMemories()
+
+    setLoadingAction('')
+
+    showMessage(
+      data.message ||
+      'Memory saved successfully!',
+      'success'
+    )
+
+    return true
+
+  } catch (error) {
+
+    setLoadingAction('')
+
+    console.error(
+      'SAVE ERROR:',
+      error
+    )
+
+    showMessage(
+      `Save failed: ${error.message}`,
+      'error'
+    )
+
+    return false
+
+  }
+
+}
 
 
   // ==========================================
@@ -856,9 +876,143 @@ function App() {
   // MAIN APPLICATION
   // ============================================================
 
+  if (currentPage === 'dashboard') {
+  return (
+    <div className="app-shell">
+      <Sidebar
+        currentPage={currentPage}
+        onNavigate={navigateTo}
+        user={currentUser}
+        onLogout={handleLogout}
+      />
+
+      <main className="app-main">
+        <Dashboard
+          user={currentUser}
+          memories={memories}
+          onNavigate={navigateTo}
+        />
+      </main>
+    </div>
+  )
+}
+
+if (currentPage === 'memories') {
+  return (
+    <div className="app-shell">
+      <Sidebar
+        currentPage={currentPage}
+        onNavigate={navigateTo}
+        user={currentUser}
+        onLogout={handleLogout}
+      />
+
+      <main className="app-main">
+        <Memories
+  memories={memories}
+
+  searchQuery={searchQuery}
+  setSearchQuery={setSearchQuery}
+  onSearch={handleSearchMemory}
+
+  onAddMemory={() => {
+    setMemory('')
+    setShowAddMemory(true)
+  }}
+
+  memory={memory}
+  showAddMemory={showAddMemory}
+  setShowAddMemory={setShowAddMemory}
+  setMemory={setMemory}
+
+  onSaveMemory={handleSaveMemory}
+  saving={loadingAction === 'save'}
+
+  onEditMemory={startEdit}
+
+  onDeleteMemory={(memory) =>
+    handleDeleteMemory(memory.memory_id)
+  }
+
+  /* EDIT */
+  editingMemory={editingMemory}
+  editText={editText}
+  setEditText={setEditText}
+
+  onUpdateMemory={handleUpdateMemory}
+  onCancelEdit={cancelEdit}
+
+  updating={loadingAction === 'update'}
+/>
+      </main>
+    </div>
+  )
+}
+
+if (currentPage === 'ask-ai') {
+  return (
+    <div className="app-shell">
+      <Sidebar
+        currentPage={currentPage}
+        onNavigate={navigateTo}
+        user={currentUser}
+        onLogout={handleLogout}
+      />
+
+      <main className="app-main">
+        <AskAI
+          question={question}
+          setQuestion={setQuestion}
+          onAsk={handleAskMemory}
+          answer={aiAnswer}
+          relevantMemories={searchResults}
+          loading={loadingAction === 'ask'}
+        />
+      </main>
+    </div>
+  )
+}
+
   return (
 
     <div className="app">
+
+      {currentPage === 'dashboard' && (
+  <Dashboard
+    user={currentUser}
+    memories={memories}
+    onNavigate={navigateTo}
+  />
+)}
+
+{currentPage === 'memories' && (
+  <Memories
+    memories={memories}
+    searchQuery={searchQuery}
+    setSearchQuery={setSearchQuery}
+    onSearch={handleSearchMemory}
+    onAddMemory={() => setMemory('')}
+    memory={memory}
+    showAddMemory={showAddMemory}
+    setShowAddMemory={setShowAddMemory}
+    setMemory={setMemory}
+    onSaveMemory={handleSaveMemory}
+    saving={loadingAction === 'save'}
+    onEditMemory={startEdit}
+    onDeleteMemory={(memory) => handleDeleteMemory(memory.memory_id)}
+  />
+)}
+
+{currentPage === 'ask-ai' && (
+  <AskAI
+    question={question}
+    setQuestion={setQuestion}
+    onAsk={handleAskMemory}
+    answer={aiAnswer}
+    relevantMemories={searchResults}
+    loading={loadingAction === 'ask'}
+  />
+)}
 
 
       {/* =====================================
