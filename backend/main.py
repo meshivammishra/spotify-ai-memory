@@ -273,7 +273,7 @@ class MemorySearchRequest(BaseModel):
     )
 
     top_k: int = Field(
-        default=3,
+        default=5,
         ge=1,
         le=10,
         description="Number of relevant memories"
@@ -1512,7 +1512,7 @@ def semantic_search(
             for record in result
         ]
 
-    ranked_memories = []
+        ranked_memories = []
 
     for memory in memories:
 
@@ -1523,6 +1523,9 @@ def semantic_search(
         similarity = float(
             memory.get("score") or 0.0
         )
+
+        if similarity < 0.30:
+            continue
 
         confidence = float(
             memory.get("confidence") or 0.0
@@ -1536,15 +1539,59 @@ def semantic_search(
             memory.get("created_at")
         )
 
-        final_score = (
-            0.65 * similarity
-            + 0.15 * importance
-            + 0.10 * confidence
-            + 0.10 * recency
+        # Hybrid keyword matching
+        query_words = set(
+            normalize_memory_text(query).lower().split()
         )
+
+        memory_text = " ".join([
+            str(memory.get("fact") or ""),
+            str(memory.get("value") or "")
+        ]).lower()
+
+        memory_words = set(
+            normalize_memory_text(memory_text).split()
+        )
+
+        stop_words = {
+            "mera", "meri", "mere", "mujhe",
+            "hai", "h", "ka", "ki", "ke",
+            "kya", "kiske", "kis", "ko",
+            "the", "is", "am", "are",
+            "my", "me", "a", "an",
+            "who", "what", "which",
+            "does", "do", "to", "of"
+        }
+
+        query_keywords = query_words - stop_words
+        memory_keywords = memory_words - stop_words
+
+        if query_keywords:
+            keyword_overlap = (
+                len(query_keywords & memory_keywords)
+                / len(query_keywords)
+            )
+        else:
+            keyword_overlap = 0.0
+
+        # Final hybrid score
+        final_score = (
+            0.70 * similarity
+            + 0.20 * keyword_overlap
+            + 0.05 * importance
+            + 0.03 * confidence
+            + 0.02 * recency
+        )
+        if final_score < 0.75:
+            continue
 
         memory["similarity_score"] = round(
             similarity,
+            4
+        )
+
+        memory["keyword_score"] = round(
+            keyword_overlap,
             4
         )
 
@@ -1565,6 +1612,8 @@ def semantic_search(
         ranked_memories.append(
             memory
         )
+
+        
 
     ranked_memories.sort(
         key=lambda x: x["final_score"],

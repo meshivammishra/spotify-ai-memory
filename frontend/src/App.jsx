@@ -62,6 +62,7 @@ function App() {
   const [loadingAction, setLoadingAction] = useState('')
 
   const [searchResults, setSearchResults] = useState([])
+  const [isSearching, setIsSearching] = useState(false)
   const [memories, setMemories] = useState([])
 
   const [aiAnswer, setAiAnswer] = useState('')
@@ -587,10 +588,12 @@ function App() {
         )
 
       setSearchResults(
-        data.relevant_memories || []
-      )
+  data.relevant_memories || []
+)
 
-      setLoadingAction('')
+setIsSearching(true)
+
+setLoadingAction('')
 
       if (data.count) {
 
@@ -909,7 +912,7 @@ if (currentPage === 'memories') {
 
       <main className="app-main">
         <Memories
-  memories={memories}
+  memories={isSearching ? searchResults : memories}
 
   searchQuery={searchQuery}
   setSearchQuery={setSearchQuery}
