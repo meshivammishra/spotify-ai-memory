@@ -444,6 +444,23 @@ def create_access_token(user_id: str):
 
     return token
 
+def calculate_token_overlap(text_a: str, text_b: str) -> float:
+    """
+    Calculate the percentage of words from text_a
+    that also appear in text_b.
+    """
+
+    words_a = set(
+        re.findall(r"\b\w+\b", text_a.lower())
+    )
+    words_b = set(
+        re.findall(r"\b\w+\b", text_b.lower())
+    )
+
+    if not words_a:
+        return 0.0
+
+    return len(words_a & words_b) / len(words_a)
 
 # ============================================================
 # MEMORY IMPORTANCE
