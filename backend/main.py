@@ -1112,6 +1112,68 @@ def find_similar_memory(
 # SAVE ONE MANUAL MEMORY
 # ============================================================
 
+def classify_memory_type(text: str) -> str:
+    """
+    Classify a user memory into:
+    personal, preference, or episodic.
+    """
+
+    text = normalize_memory_text(text).lower()
+
+    # Preference indicators
+    preference_keywords = [
+        "favourite",
+        "favorite",
+        "prefer",
+        "preference",
+        "love",
+        "like",
+        "likes",
+        "liked",
+        "dislike",
+        "dislike",
+        "hate",
+        "best",
+        "my choice",
+        "i enjoy",
+        "i usually listen",
+    ]
+
+    # Episodic / activity indicators
+    episodic_keywords = [
+        "listened",
+        "listened to",
+        "played",
+        "heard",
+        "watched",
+        "today",
+        "yesterday",
+        "last night",
+        "this morning",
+        "this evening",
+        "while travelling",
+        "while traveling",
+        "when travelling",
+        "when traveling",
+        "during",
+        "on my way",
+    ]
+
+    if any(
+        keyword in text
+        for keyword in preference_keywords
+    ):
+        return "preference"
+
+    if any(
+        keyword in text
+        for keyword in episodic_keywords
+    ):
+        return "episodic"
+
+    return "personal"
+
+
 def save_manual_memory(
     user_id: str,
     text: str
@@ -1128,6 +1190,7 @@ def save_manual_memory(
             status_code=400,
             detail="Memory text cannot be empty"
         )
+    memory_type = classify_memory_type(text)
 
     # --------------------------------------------------------
     # GOVERNANCE / POLICY CHECK
@@ -1135,7 +1198,7 @@ def save_manual_memory(
 
     policy = governance_decision(
         text=text,
-        memory_type="personal",
+        memory_type=memory_type,
         source="user_input",
         confidence=1.0,
     )
@@ -1173,7 +1236,7 @@ def save_manual_memory(
             memory_id,
 
         "type":
-            "personal",
+            memory_type,
 
         "fact":
             text,
@@ -1186,7 +1249,7 @@ def save_manual_memory(
 
         "importance":
             calculate_importance(
-                "personal",
+                memory_type,
                 1.0,
                 "user_input"
             ),
@@ -1243,7 +1306,7 @@ def save_manual_memory(
     # --------------------------------------------------------
 
     embedding_text = (
-        f"personal: {text}"
+    f"{memory_type}: {text}"
     )
 
     embedding = create_embedding(

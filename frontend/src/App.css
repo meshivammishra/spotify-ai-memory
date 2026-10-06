@@ -2543,3 +2543,26 @@ textarea::placeholder {
   align-items: center;
   gap: 8px;
 }
+/* Fix Recent Memories overflow */
+.recent-memory-item {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.recent-memory-content {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.recent-memory-content strong {
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
