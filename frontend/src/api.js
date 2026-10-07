@@ -101,19 +101,6 @@ export function getCurrentUser() {
   }
 }
 
-
-// ============================================================
-// GET ACCESS TOKEN
-// ============================================================
-
-export function getAccessToken() {
-
-  return localStorage.getItem(
-    TOKEN_STORAGE_KEY
-  );
-}
-
-
 // ============================================================
 // LOGOUT
 // ============================================================
@@ -469,14 +456,4 @@ export async function deleteMemory(
   );
 
   return await handleResponse(response);
-}
-
-
-// ============================================================
-// API URL
-// ============================================================
-
-export function getApiUrl() {
-
-  return API_URL;
 }
