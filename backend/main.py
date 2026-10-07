@@ -8,11 +8,10 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from langsmith import traceable
 from database import get_db
-from models import User, AuditLog
+from models import User
 
 import os
 import re
-import json
 from pathlib import Path
 from collections import Counter
 from datetime import datetime, timezone, timedelta
