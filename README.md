@@ -1,4 +1,4 @@
-# 🎵 Spotify AI Memory System (https://spotify-ai-memory-1.onrender.com
+# 🎵 Spotify AI Memory System (https://spotify-ai-memory-1.onrender.com)
 
 ### An AI-Powered Personalized Memory and Retrieval Platform
 
