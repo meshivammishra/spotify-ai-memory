@@ -375,3 +375,45 @@ export async function deleteMemory(
 
   return await handleResponse(response);
 }
+// ============================================================
+// FETCH CURRENT USER
+// ============================================================
+
+export async function fetchCurrentUser() {
+  const response = await fetch(`${API_URL}/auth/me`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
+
+  const data = await handleResponse(response);
+
+  // Support APIs that return either a user object
+  // or an object containing a user property.
+  return data.user || data;
+}
+// ============================================================
+// ADMIN: GET ALL USERS
+// ============================================================
+
+export async function getAdminUsers() {
+  const response = await fetch(`${API_URL}/users`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
+
+  return await handleResponse(response);
+}
+
+
+// ============================================================
+// ADMIN: GET ALL INTERACTIONS
+// ============================================================
+
+export async function getAdminInteractions() {
+  const response = await fetch(`${API_URL}/interactions`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
+
+  return await handleResponse(response);
+}

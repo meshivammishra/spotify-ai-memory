@@ -4,12 +4,13 @@ import Dashboard from './Dashboard'
 import Memories from './Memories'
 import AskAI from './AskAI'
 import Sidebar from './Sidebar'
-
+import AdminDashboard from './AdminDashboard';
 import {
   loginUser,
   registerUser,
   logout,
   getCurrentUser,
+  fetchCurrentUser,
   saveMemory,
   searchMemory,
   askMemory,
@@ -110,8 +111,11 @@ function App() {
         authPassword
       )
 
-      setCurrentUser(data.user)
-      setCurrentPage('dashboard')
+      const verifiedUser = await fetchCurrentUser();
+      console.log("VERIFIED USER:", verifiedUser);
+
+      setCurrentUser(verifiedUser);
+      setCurrentPage('dashboard');
 
       setAuthEmail('')
       setAuthPassword('')
@@ -289,6 +293,34 @@ function App() {
     }
 
   }, [currentUser?.user_id])
+
+  useEffect(() => {
+  if (!currentUser?.user_id) return;
+
+  let cancelled = false;
+
+  async function verifyUser() {
+    try {
+      const verifiedUser = await fetchCurrentUser();
+
+      if (!cancelled) {
+        setCurrentUser(verifiedUser);
+      }
+    } catch (error) {
+      if (!cancelled) {
+        logout();
+        setCurrentUser(null);
+        setCurrentPage('dashboard');
+      }
+    }
+  }
+
+  verifyUser();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
 
   // ==========================================
@@ -879,6 +911,27 @@ setLoadingAction('')
   // MAIN APPLICATION
   // ============================================================
 
+  if (currentPage === 'admin') {
+  if (!currentUser?.is_admin) {
+    setCurrentPage('dashboard');
+    return null;
+  }
+
+  return (
+    <div className="app-shell">
+      <Sidebar
+        currentPage={currentPage}
+        onNavigate={navigateTo}
+        user={currentUser}
+        onLogout={handleLogout}
+      />
+
+      <main className="app-main">
+        <AdminDashboard user={currentUser} />
+      </main>
+    </div>
+  );
+}
   if (currentPage === 'dashboard') {
   return (
     <div className="app-shell">

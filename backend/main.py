@@ -1838,6 +1838,34 @@ auth_router = create_auth_router(
 )
 
 app.include_router(auth_router)
+@app.get("/auth/me")
+def get_current_user_info(
+    authenticated_user_id: str = Depends(get_authenticated_user),
+):
+    with driver.session() as session:
+        record = session.run(
+            """
+            MATCH (u:User {user_id: $user_id})
+            RETURN
+                u.user_id AS user_id,
+                u.name AS name,
+                u.email AS email
+            """,
+            user_id=authenticated_user_id,
+        ).single()
+
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    return {
+        "user_id": record["user_id"],
+        "name": record["name"],
+        "email": record["email"],
+        "is_admin": authenticated_user_id == ADMIN_USER_ID,
+    }
 users_router = create_users_router(
     driver=driver,
     require_admin=require_admin,

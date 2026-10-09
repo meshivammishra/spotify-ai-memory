@@ -36,6 +36,19 @@ function Sidebar({ currentPage, onNavigate, user, onLogout }) {
           <span>🤖</span>
           Ask AI
         </button>
+        {user?.is_admin && (
+  <>
+    <p className="sidebar-label">ADMINISTRATION</p>
+
+    <button
+      className={currentPage === 'admin' ? 'active' : ''}
+      onClick={() => onNavigate('admin')}
+    >
+      <span>🛡️</span>
+      Admin Dashboard
+    </button>
+  </>
+)}
       </nav>
 
       <div className="sidebar-bottom">
