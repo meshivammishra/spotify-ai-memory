@@ -8,8 +8,6 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from langsmith import traceable
 from database import get_db
-from models import User
-
 import os
 import re
 from pathlib import Path
@@ -21,14 +19,16 @@ import logging
 from models import Interaction
 from pwdlib import PasswordHash
 from jose import jwt, JWTError
-
+from routers.auth import create_auth_router
+from routers.users import create_users_router
+from routers.interactions import create_interactions_router
+from routers.memories import create_memories_router
 from neo4j import GraphDatabase
 from google import genai
 
 from embeddings.embedder import create_embedding
 from governance import (
     normalize_memory_text,
-    build_memory_metadata,
     governance_decision,
     filter_retrievable_memories,
     build_provenance,
@@ -51,6 +51,12 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+# ============================================================
+# ADMIN CONFIGURATION
+# ============================================================
+
+ADMIN_USER_ID = os.getenv("ADMIN_USER_ID", "").strip()
 
 
 # ============================================================
@@ -128,6 +134,22 @@ def get_authenticated_user(
             detail="Invalid or expired authentication token"
         )
 
+def require_admin(
+    authenticated_user_id: str = Depends(get_authenticated_user),
+):
+    if not ADMIN_USER_ID:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin access is not configured",
+        )
+
+    if authenticated_user_id != ADMIN_USER_ID:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
+
+    return authenticated_user_id
 
 # ============================================================
 # GEMINI CLIENT
@@ -1804,1124 +1826,63 @@ def health_check():
         "phase":
             "Phase 3 - Multi User"
     }
-
-
 # ============================================================
-# REGISTER USER
+# AUTHENTICATION ROUTER
 # ============================================================
 
-@app.post("/auth/register")
-def register_user(
-    request: RegisterRequest
-):
-
-    name = request.name.strip()
-
-    email = (
-        request.email
-        .strip()
-        .lower()
-    )
-
-    password = request.password
-
-    if not name:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Name cannot be empty"
-        )
-
-    if not email:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Email cannot be empty"
-        )
-
-    if len(password) < 6:
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Password must be at least "
-                "6 characters"
-            )
-        )
-
-    try:
-
-        with driver.session() as session:
-
-            existing_user = session.run(
-                """
-                MATCH (u:User {
-                    email: $email
-                })
-
-                RETURN u.user_id AS user_id
-                """,
-
-                email=email
-            ).single()
-
-            if existing_user:
-
-                raise HTTPException(
-                    status_code=409,
-                    detail="Email already registered"
-                )
-
-            user_id = (
-                f"user_"
-                f"{uuid.uuid4().hex[:8]}"
-            )
-
-            created_at = datetime.now(
-                timezone.utc
-            ).isoformat()
-
-            password_hash_value = (
-                password_hash.hash(password)
-            )
-
-            result = session.run(
-                """
-                CREATE (u:User {
-                    user_id: $user_id,
-                    name: $name,
-                    email: $email,
-                    password_hash: $password_hash,
-                    created_at: $created_at
-                })
-
-                RETURN
-                    u.user_id AS user_id,
-                    u.name AS name,
-                    u.email AS email,
-                    u.created_at AS created_at
-                """,
-
-                user_id=user_id,
-
-                name=name,
-
-                email=email,
-
-                password_hash=password_hash_value,
-
-                created_at=created_at
-            )
-
-            record = result.single()
-
-            return {
-
-                "message":
-                    "User registered successfully",
-
-                "user":
-                    record.data()
-            }
-
-    except HTTPException:
-        raise
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "User registration failed: "
-                f"{e}"
-            )
-        )
-
-
-# ============================================================
-# LOGIN USER
-# ============================================================
-
-@app.post("/auth/login")
-def login_user(
-    request: LoginRequest
-):
-
-    email = (
-        request.email
-        .strip()
-        .lower()
-    )
-
-    password = request.password
-
-    try:
-
-        with driver.session() as session:
-
-            result = session.run(
-                """
-                MATCH (u:User {
-                    email: $email
-                })
-
-                RETURN
-                    u.user_id AS user_id,
-                    u.name AS name,
-                    u.email AS email,
-                    u.password_hash AS password_hash
-                """,
-
-                email=email
-            )
-
-            record = result.single()
-
-            if not record:
-
-                raise HTTPException(
-                    status_code=401,
-                    detail="Invalid email or password"
-                )
-
-            stored_password_hash = (
-                record["password_hash"]
-            )
-
-            if not stored_password_hash:
-
-                raise HTTPException(
-                    status_code=401,
-                    detail="Invalid email or password"
-                )
-
-            password_valid = (
-                password_hash.verify(
-                    password,
-                    stored_password_hash
-                )
-            )
-
-            if not password_valid:
-
-                raise HTTPException(
-                    status_code=401,
-                    detail="Invalid email or password"
-                )
-
-            access_token = create_access_token(
-                record["user_id"]
-            )
-
-            return {
-
-                "message":
-                    "Login successful",
-
-                "access_token":
-                    access_token,
-
-                "token_type":
-                    "bearer",
-
-                "expires_in":
-                    ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-
-                "user": {
-
-                    "user_id":
-                        record["user_id"],
-
-                    "name":
-                        record["name"],
-
-                    "email":
-                        record["email"]
-                }
-            }
-
-    except HTTPException:
-        raise
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Login failed: "
-                f"{e}"
-            )
-        )
-
-
-# ============================================================
-# CREATE USER
-# ============================================================
-
-@app.post("/users")
-def create_user(
-    request: UserCreateRequest
-):
-
-    name = request.name.strip()
-
-    if not name:
-
-        raise HTTPException(
-            status_code=400,
-            detail="User name cannot be empty"
-        )
-
-    user_id = (
-        f"user_"
-        f"{uuid.uuid4().hex[:8]}"
-    )
-
-    created_at = datetime.now(
-        timezone.utc
-    ).isoformat()
-
-    try:
-
-        with driver.session() as session:
-
-            result = session.run(
-                """
-                CREATE (u:User {
-                    user_id: $user_id,
-                    name: $name,
-                    created_at: $created_at
-                })
-
-                RETURN
-                    u.user_id AS user_id,
-                    u.name AS name,
-                    u.created_at AS created_at
-                """,
-
-                user_id=user_id,
-
-                name=name,
-
-                created_at=created_at
-            )
-
-            record = result.single()
-
-            return {
-
-                "message":
-                    "User created successfully",
-
-                "user":
-                    record.data()
-            }
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "User creation failed: "
-                f"{e}"
-            )
-        )
-
-
-# ============================================================
-# GET ALL USERS
-# ============================================================
-
-@app.get("/users")
-def get_users():
-
-    try:
-
-        with driver.session() as session:
-
-            result = session.run(
-                """
-                MATCH (u:User)
-
-                RETURN
-                    u.user_id AS user_id,
-                    u.name AS name,
-                    u.email AS email,
-                    u.created_at AS created_at
-
-                ORDER BY u.created_at
-                """
-            )
-
-            users = [
-                record.data()
-                for record in result
-            ]
-
-            return {
-
-                "count":
-                    len(users),
-
-                "users":
-                    users
-            }
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Failed to get users: "
-                f"{e}"
-            )
-        )
-
-
-# ============================================================
-# GET ALL INTERACTIONS
-# ============================================================
-
-# ============================================================
-# CREATE INTERACTION EVENT
-# ============================================================
-
-@app.post("/v1/events")
-def create_event(
-    request: InteractionEventRequest,
-    db=Depends(get_db),
-    authenticated_user_id: str = Depends(get_authenticated_user)
-):
-    if request.user_id != authenticated_user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only create events for your own user"
-        )
-
-    if not request.consent:
-        raise HTTPException(
-            status_code=403,
-            detail="Consent is required"
-        )
-
-    existing = db.query(Interaction).filter(
-        Interaction.idempotency_key == request.idempotency_key
-    ).first()
-
-    if existing:
-        return {
-            "message": "Event already exists",
-            "duplicate": True,
-            "interaction": {
-                "id": existing.id,
-                "user_id": existing.user_id,
-                "timestamp": existing.timestamp.isoformat(),
-                "type": existing.type,
-                "artist": existing.artist,
-                "track": existing.track,
-                "genre": existing.genre,
-                "context": existing.context,
-            }
-        }
-
-    interaction = Interaction(
-        user_id=request.user_id,
-        timestamp=request.timestamp,
-        type=request.type,
-        artist=request.artist,
-        track=request.track,
-        genre=request.genre,
-        context=request.context,
-        subject_scope=request.subject_scope,
-        consent=request.consent,
-        source_event_id=request.source_event_id,
-        idempotency_key=request.idempotency_key,
-    )
-
-    db.add(interaction)
-    db.commit()
-    db.refresh(interaction)
-
-    return {
-        "message": "Event stored successfully",
-        "duplicate": False,
-        "interaction": {
-            "id": interaction.id,
-            "user_id": interaction.user_id,
-            "timestamp": interaction.timestamp.isoformat(),
-            "type": interaction.type,
-            "artist": interaction.artist,
-            "track": interaction.track,
-            "genre": interaction.genre,
-            "context": interaction.context,
-        }
-    }
-
-
-
-@app.get("/interactions")
-def get_interactions(
-    db=Depends(get_db),
-):
-    interactions = load_interactions(db)
-
-    return {
-        "count": len(interactions),
-        "interactions": interactions,
-    }
-
-
-# ============================================================
-# GET USER INTERACTIONS
-# ============================================================
-
-@app.get("/interactions/{user_id}")
-def get_user_interactions_endpoint(
-    user_id: str,
-    db=Depends(get_db),
-):
-
-    user_data = get_user_interactions(
-    db,
-    user_id
+auth_router = create_auth_router(
+    driver=driver,
+    password_hash=password_hash,
+    create_access_token=create_access_token,
+    access_token_expire_minutes=ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 
-    return {
-
-        "user_id":
-            user_id,
-
-        "count":
-            len(user_data),
-
-        "interactions":
-            user_data
-    }
-
-
-# ============================================================
-# GET SAVED MEMORIES
-# ============================================================
-
-@app.get("/memory/{user_id}")
-def get_saved_memory(
-    user_id: str,
-    authenticated_user_id: str = Depends(get_authenticated_user)
-):
-    if user_id != authenticated_user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only access your own memories"
-        )
-
-    try:
-
-        with driver.session() as session:
-
-            result = session.run(
-                """
-                MATCH (
-                    u:User {
-                        user_id: $user_id
-                    }
-                )-[:HAS_MEMORY]->(
-                    m:Memory
-                )
-
-                RETURN
-                    u.user_id AS user_id,
-
-                    collect({
-                        memory_id: m.memory_id,
-                        type: m.type,
-                        fact: m.fact,
-                        value: m.value,
-                        confidence: m.confidence,
-                        importance: m.importance,
-                        source: m.source,
-                        created_at: m.created_at,
-                        status: m.status
-                    }) AS memories
-                """,
-
-                user_id=user_id
-            )
-
-            record = result.single()
-
-            if not record:
-
-                return {
-
-                    "user_id":
-                        user_id,
-
-                    "message":
-                        "No saved memory found",
-
-                    "memories":
-                        []
-                }
-
-            return {
-
-                "user_id":
-                    record["user_id"],
-
-                "memories":
-                    record["memories"]
-            }
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Failed to get memory: "
-                f"{e}"
-            )
-        )
-
-
-# ============================================================
-# SAVE MANUAL MEMORY
-# ============================================================
-
-@app.post("/memory/{user_id}/save")
-def save_user_memory(
-    user_id: str,
-    request: SaveMemoryRequest,
-    authenticated_user_id: str = Depends(get_authenticated_user)
-):
-    if user_id != authenticated_user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only access your own memories"
-        )
-
-    try:
-
-        memory = save_manual_memory(
-
-            user_id=user_id,
-
-            text=request.text
-        )
-
-        if memory.get("duplicate"):
-
-            return {
-
-                "message":
-                    "Similar memory already exists",
-
-                "user_id":
-                    user_id,
-
-                "memory":
-                    memory
-            }
-
-        return {
-
-            "message":
-                "Memory saved successfully",
-
-            "user_id":
-                user_id,
-
-            "memory":
-                memory
-        }
-
-    except HTTPException:
-        raise
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Memory save failed: "
-                f"{e}"
-            )
-        )
-
-
-# ============================================================
-# GENERATE MEMORIES FROM LISTENING HISTORY
-# ============================================================
-
-@app.post("/memory/{user_id}/generate")
-def generate_user_memory(
-    user_id: str,
-    db=Depends(get_db),
-    authenticated_user_id: str = Depends(get_authenticated_user)
-):
-    if user_id != authenticated_user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only access your own memories"
-        )
-
-    user_data = get_user_interactions(
-    db,
-    user_id
+app.include_router(auth_router)
+users_router = create_users_router(
+    driver=driver,
+    require_admin=require_admin,
+)
+app.include_router(users_router)
+interactions_router = create_interactions_router(
+    get_db=get_db,
+    Interaction=Interaction,
+    InteractionEventRequest=InteractionEventRequest,
+    get_authenticated_user=get_authenticated_user,
+    load_interactions=load_interactions,
+    get_user_interactions=get_user_interactions,
+    require_admin=require_admin,
+    admin_user_id=ADMIN_USER_ID,
 )
 
-    if not user_data:
+app.include_router(interactions_router)
 
-        return {
+app.include_router(interactions_router)
+memories_router = create_memories_router(
+    driver=driver,
+    get_authenticated_user=get_authenticated_user,
+    SaveMemoryRequest=SaveMemoryRequest,
+    MemorySearchRequest=MemorySearchRequest,
+    AskRequest=AskRequest,
+    MemoryUpdateRequest=MemoryUpdateRequest,
+    get_db=get_db,
+    get_user_interactions=get_user_interactions,
+    save_manual_memory=save_manual_memory,
+    build_memory=build_memory,
+    save_memory_to_neo4j=save_memory_to_neo4j,
+    semantic_search=semantic_search,
+    build_memory_context=build_memory_context,
+    gemini_client=gemini_client,
+    create_embedding=create_embedding,
+    calculate_importance=calculate_importance,
+    find_similar_memory=find_similar_memory,
+    duplicate_similarity_threshold=DUPLICATE_SIMILARITY_THRESHOLD,
+    datetime=datetime,
+    timezone=timezone,
+    traceable=traceable,
+)
 
-            "user_id":
-                user_id,
-
-            "message":
-                "No interactions found",
-
-            "memories":
-                []
-        }
-
-    memory = build_memory(
-        user_id,
-        user_data
-    )
-
-    save_memory_to_neo4j(
-        memory
-    )
-
-    return {
-
-        "message":
-            "User memory generated successfully",
-
-        "memory":
-            memory
-    }
-
-
+app.include_router(memories_router)
 # ============================================================
-# SEMANTIC MEMORY SEARCH
-# ============================================================
-
-@app.post("/memory/{user_id}/search")
-def search_memory(
-    user_id: str,
-    request: MemorySearchRequest,
-    authenticated_user_id: str = Depends(get_authenticated_user)
-):
-    if user_id != authenticated_user_id:
-        raise HTTPException(
-        status_code=403,
-        detail="You can only access your own memories"
-    )
-
-    try:
-
-        memories = semantic_search(
-
-            user_id=user_id,
-
-            query=request.query,
-
-            top_k=request.top_k
-        )
-
-        return {
-
-            "user_id":
-                user_id,
-
-            "query":
-                request.query,
-
-            "count":
-                len(memories),
-
-            "relevant_memories":
-                memories
-        }
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Memory search failed: "
-                f"{e}"
-            )
-        )
-
-
-# ============================================================
-# ASK MEMORY — RAG + GEMINI
-# ============================================================
-
-@traceable(name="ask_memory_rag", run_type="chain")
-@app.post("/memory/{user_id}/ask")
-def ask_memory(
-    user_id: str,
-    request: AskRequest,
-    authenticated_user_id: str = Depends(get_authenticated_user)
-):
-    if user_id != authenticated_user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only access your own memories"
-        )
-
-    try:
-
-        relevant_memories = semantic_search(
-
-            user_id=user_id,
-
-            query=request.question,
-
-            top_k=3
-        )
-
-        context = build_memory_context(
-            relevant_memories,
-            max_memories=5
-        )
-
-        prompt = f"""
-You are Spotify AI Memory Assistant.
-
-Use the user's stored memories to answer
-the question.
-
-USER MEMORIES:
-{context}
-
-USER QUESTION:
-{request.question}
-
-RULES:
-- Use the memories when they are relevant.
-- Do not invent personal memories.
-- If the memories do not contain enough information,
-  clearly say that.
-- Give a natural and helpful answer.
-"""
-
-        response = gemini_client.models.generate_content(
-
-            model="models/gemini-3.6-flash",
-
-            contents=prompt
-        )
-
-        return {
-
-            "user_id":
-                user_id,
-
-            "question":
-                request.question,
-
-            "relevant_memories":
-                relevant_memories,
-
-            "answer":
-                response.text
-        }
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Ask Memory failed: "
-                f"{e}"
-            )
-        )
-
-
-# ============================================================
-# UPDATE MEMORY
-# ============================================================
-
-@app.put("/memory/{user_id}/{memory_id}")
-def update_memory(
-    user_id: str,
-    memory_id: str,
-    request: MemoryUpdateRequest,
-    authenticated_user_id: str = Depends(get_authenticated_user)
-):
-    if user_id != authenticated_user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only access your own memories"
-        )
-
-    try:
-
-        with driver.session() as session:
-
-            existing = session.run(
-                """
-                MATCH (
-                    u:User {
-                        user_id: $user_id
-                    }
-                )-[:HAS_MEMORY]->(
-                    m:Memory {
-                        memory_id: $memory_id
-                    }
-                )
-
-                RETURN
-                    m.type AS type,
-                    m.confidence AS confidence,
-                    m.source AS source,
-                    m.importance AS importance
-                """,
-
-                user_id=user_id,
-
-                memory_id=memory_id
-            ).single()
-
-            if not existing:
-
-                return {
-
-                    "user_id":
-                        user_id,
-
-                    "memory_id":
-                        memory_id,
-
-                    "message":
-                        "Memory not found"
-                }
-
-            memory_type = existing["type"]
-
-            text = (
-                f"{memory_type}: "
-                f"{request.fact}"
-            )
-
-            embedding = create_embedding(
-                text
-            )
-
-            importance = calculate_importance(
-
-                memory_type,
-
-                existing["confidence"]
-                if existing["confidence"] is not None
-                else 0.5,
-
-                existing["source"]
-                if existing["source"] is not None
-                else "user_input"
-            )
-
-            similar_memory = find_similar_memory(
-                user_id=user_id,
-                embedding=embedding,
-                source_text=request.fact,
-                threshold=DUPLICATE_SIMILARITY_THRESHOLD,
-                exclude_memory_id=memory_id
-            )
-
-            if similar_memory:
-
-                return {
-
-                    "message":
-                        "Similar memory already exists",
-
-                    "user_id":
-                        user_id,
-
-                    "memory_id":
-                        memory_id,
-
-                    "duplicate":
-                        True,
-
-                    "similar_memory":
-                        similar_memory
-                }
-
-            result = session.run(
-                """
-                MATCH (
-                    u:User {
-                        user_id: $user_id
-                    }
-                )-[:HAS_MEMORY]->(
-                    m:Memory {
-                        memory_id: $memory_id
-                    }
-                )
-
-                SET
-                    m.fact = $fact,
-                    m.value = $value,
-                    m.importance = $importance,
-                    m.embedding = $embedding,
-                    m.updated_at = $updated_at
-
-                RETURN
-                    m.memory_id AS memory_id,
-                    m.type AS type,
-                    m.fact AS fact,
-                    m.value AS value,
-                    m.confidence AS confidence,
-                    m.importance AS importance,
-                    m.source AS source,
-                    m.created_at AS created_at,
-                    m.updated_at AS updated_at,
-                    m.status AS status
-                """,
-
-                user_id=user_id,
-
-                memory_id=memory_id,
-
-                fact=request.fact,
-
-                value=request.value,
-
-                importance=importance,
-
-                embedding=embedding,
-
-                updated_at=datetime.now(
-                    timezone.utc
-                ).isoformat()
-            )
-
-            record = result.single()
-
-            if not record:
-
-                return {
-
-                    "user_id":
-                        user_id,
-
-                    "memory_id":
-                        memory_id,
-
-                    "message":
-                        "Memory not found"
-                }
-
-            return {
-
-                "message":
-                    "Memory updated successfully",
-
-                "duplicate":
-                    False,
-
-                "memory":
-                    record.data()
-            }
-
-    except HTTPException:
-        raise
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Memory update failed: "
-                f"{e}"
-            )
-        )
-
-
-# ============================================================
-# DELETE MEMORY
-# ============================================================
-
-@app.delete("/memory/{user_id}/{memory_id}")
-def delete_memory(
-    user_id: str,
-    memory_id: str,
-    authenticated_user_id: str = Depends(get_authenticated_user)
-):
-    if user_id != authenticated_user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only access your own memories"
-        )
-
-    try:
-
-        with driver.session() as session:
-
-            result = session.run(
-                """
-                MATCH (
-                    u:User {
-                        user_id: $user_id
-                    }
-                )-[:HAS_MEMORY]->(
-                    m:Memory {
-                        memory_id: $memory_id
-                    }
-                )
-
-                DETACH DELETE m
-
-                RETURN count(m) AS deleted
-                """,
-
-                user_id=user_id,
-
-                memory_id=memory_id
-            )
-
-            record = result.single()
-
-            if record["deleted"] == 0:
-
-                return {
-
-                    "user_id":
-                        user_id,
-
-                    "memory_id":
-                        memory_id,
-
-                    "message":
-                        "Memory not found"
-                }
-
-            return {
-
-                "message":
-                    "Memory deleted successfully",
-
-                "user_id":
-                    user_id,
-
-                "memory_id":
-                    memory_id
-            }
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Memory deletion failed: "
-                f"{e}"
-            )
-        )# ============================================================
 # MCP MEMORY TOOLS
 # ============================================================
 
