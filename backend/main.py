@@ -1,4 +1,6 @@
 from typing import Optional
+from sqlalchemy.orm import Session
+from models import Interaction, AuditLog
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -7,7 +9,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from langsmith import traceable
-from database import get_db
+from database import get_db, SessionLocal
 import os
 import re
 from pathlib import Path
@@ -16,13 +18,13 @@ from datetime import datetime, timezone, timedelta
 import math
 import uuid
 import logging
-from models import Interaction
 from pwdlib import PasswordHash
 from jose import jwt, JWTError
 from routers.auth import create_auth_router
 from routers.users import create_users_router
 from routers.interactions import create_interactions_router
 from routers.memories import create_memories_router
+from routers.audit_logs import create_audit_logs_router
 from neo4j import GraphDatabase
 from google import genai
 
@@ -150,6 +152,35 @@ def require_admin(
         )
 
     return authenticated_user_id
+
+# ============================================================
+# AUDIT LOGGING HELPER
+# ============================================================
+
+def log_audit_event(
+    db: Session,
+    user_id: str,
+    action: str,
+    memory_id: Optional[str] = None,
+    details: Optional[str] = None,
+):
+    """
+    Save an audit event to PostgreSQL.
+    """
+    try:
+        audit_log = AuditLog(
+            user_id=str(user_id),
+            action=action,
+            memory_id=memory_id,
+            details=details,
+        )
+
+        db.add(audit_log)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to save audit log")
 
 # ============================================================
 # GEMINI CLIENT
@@ -1508,10 +1539,32 @@ def save_manual_memory(
                 embedding=embedding
             )
 
-        logger.info(
+            logger.info(
             "Manual memory saved: %s",
             memory_id
         )
+
+        # Save audit log without failing the memory operation
+        try:
+            with SessionLocal() as audit_db:
+                log_audit_event(
+                    db=audit_db,
+                    user_id=user_id,
+                    action="memory_created",
+                    memory_id=memory_id,
+                    details="Manual memory created successfully",
+                )
+        except Exception:
+            logger.exception(
+                "Audit logging failed for memory: %s",
+                memory_id,
+            )
+
+        return {
+            **memory,
+            "duplicate": False,
+            "similarity": None
+        }
 
         return {
 
@@ -1871,6 +1924,13 @@ users_router = create_users_router(
     require_admin=require_admin,
 )
 app.include_router(users_router)
+audit_logs_router = create_audit_logs_router(
+    get_db=get_db,
+    AuditLog=AuditLog,
+    require_admin=require_admin,
+)
+
+app.include_router(audit_logs_router)
 interactions_router = create_interactions_router(
     get_db=get_db,
     Interaction=Interaction,

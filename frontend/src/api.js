@@ -417,3 +417,18 @@ export async function getAdminInteractions() {
 
   return await handleResponse(response);
 }
+// ============================================================
+// ADMIN: GET AUDIT LOGS
+// ============================================================
+
+export async function getAdminAuditLogs(limit = 50, offset = 0) {
+  const response = await fetch(
+    `${API_URL}/admin/audit-logs?limit=${limit}&offset=${offset}`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return await handleResponse(response);
+}
