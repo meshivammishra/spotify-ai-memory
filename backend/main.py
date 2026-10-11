@@ -1736,7 +1736,7 @@ def semantic_search(
             + 0.03 * confidence
             + 0.02 * recency
         )
-        if final_score < 0.75:
+        if final_score < 0.50:
             continue
 
         memory["similarity_score"] = round(
