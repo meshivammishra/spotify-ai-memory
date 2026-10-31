@@ -768,15 +768,10 @@ This project was developed collaboratively.
 
 Use this section to document the actual contributions of every group member. Update the placeholders before publishing the final README.
 
-## Contributors
-1. Mansi Srivastava - [Project Explanation video] (https://drive.google.com/file/d/1thJDxjCs0g_0Hz5AvGjSiTIuO3J28Iii/view?usp=sharing)
-2. Jatin Kumar - video link (https://drive.google.com/file/d/15YEH5WhAvn12GBxsF0RBuHJqFBnsfMA3/view?usp=sharing)
-3. B. Harsha Sai - colab link (https://colab.research.google.com/drive/1mnm4CNY3ERfQZMAiWi4aJQDASfRpa4j5?usp=drive_link)
-4. Deep Sarkar - video link ( https://drive.google.com/file/d/1m7F3PM1c5zjYKuOzsi8CUPLUYXwAmvSZ/view?usp=sharing )
-5. Shivam Mishra - Video_Link (  https://drive.google.com/file/d/13DTm2OXPr8f1jckPutfqJjzDMbFau6cM/view?usp=sharing  )
-6. Aryan Gupta - video link ( https://drive.google.com/file/d/1WMWmS4PLZvuNvTpDqpoEj5uT5Lt_urmF/view?usp=sharing )
-7. Anju khedar - video link (https://drive.google.com/file/d/1VmffWvHyzas4RHhxLgiaoIENIq4QHzZ6/view?usp=sharing
+## Contributor
 
+5. Shivam Mishra - Video_Link (  https://drive.google.com/file/d/13DTm2OXPr8f1jckPutfqJjzDMbFau6cM/view?usp=sharing  )
+   
 ### Suggested Areas of Responsibility
 
 Assign these areas only where they reflect the team's actual work.
